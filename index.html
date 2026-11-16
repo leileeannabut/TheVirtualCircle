@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The Virtual Circle - Full-Fledged Remote Talent & Agency Ecosystem</title>
+<title>The Virtual Circle — Executive Ecosystem & Agency Platform</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script>
@@ -11,11 +11,8 @@ tailwind.config = {
   theme: {
     extend: {
       colors: {
-        navy: { 900: '#0F172A', 800: '#1E3A8A', 700: '#1D4ED8' },
-        gold: { 500: '#EAB308', 600: '#CA8A04', 400: '#FACC15' },
-        cream: '#FFFBEB',
-        mint: '#F0FDFA',
-        coral: '#F59E0B'
+        navy: { 950: '#070D1D', 900: '#0F172A', 800: '#1E293B', 700: '#334155' },
+        gold: { 500: '#EAB308', 600: '#CA8A04', 400: '#FACC15', 300: '#FEF08A' },
       },
       fontFamily: {
         sans: ['"Plus Jakarta Sans"', 'sans-serif'],
@@ -25,296 +22,251 @@ tailwind.config = {
   }
 }
 </script>
-<style>
-.watermark {
-  position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.03; z-index: 50;
-  background-image: repeating-linear-gradient(45deg, #EAB308 0, #EAB308 100px, transparent 0, transparent 200px);
-  font-family: 'League Spartan', sans-serif; font-size: 14px; color: #EAB308; display: flex; flex-wrap: wrap; align-content: space-around; overflow: hidden;
-}
-</style>
 </head>
-<body class="bg-navy-900 text-slate-100 font-sans antialiased min-h-screen flex flex-col justify-between pb-24 md:pb-0 md:pl-72">
-<div class="watermark">THE VIRTUAL CIRCLE ✨ MENTOR PORTAL ✨ CLIENT MATCHING ✨ RECRUITER HUB ✨ SCHEDULING</div>
+<body class="bg-navy-950 text-slate-100 font-sans antialiased min-h-screen flex flex-col selection:bg-gold-500 selection:text-navy-950">
 
-<!-- Desktop Sidebar Navigation -->
-<aside class="hidden md:flex flex-col w-72 bg-navy-800 border-r border-slate-700/50 fixed inset-y-0 left-0 z-40 p-6 shadow-2xl">
-  <div class="flex items-center space-x-3 mb-6">
-    <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-gold-500 to-amber-400 flex items-center justify-center text-navy-900 font-heading font-extrabold text-2xl shadow-lg">TVC</div>
+<!-- Executive Top Navigation Bar -->
+<header class="bg-navy-900 border-b border-slate-800 sticky top-0 z-50 px-6 py-4 flex items-center justify-between shadow-xl">
+  <div class="flex items-center space-x-4">
+    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-gold-500 to-amber-400 flex items-center justify-center text-navy-950 font-heading font-extrabold text-xl shadow-lg">TVC</div>
     <div>
-      <h1 class="font-heading font-bold text-base tracking-wide text-white leading-tight">The Virtual Circle</h1>
-      <p class="text-[11px] text-gold-400 font-medium">Keep the Circle Glowing ✨</p>
+      <div class="flex items-center space-x-2">
+        <h1 class="font-heading font-extrabold text-lg tracking-wide text-white">The Virtual Circle</h1>
+        <span class="text-[10px] bg-gold-500/10 text-gold-400 border border-gold-500/30 px-2 py-0.5 rounded-full font-bold">Enterprise v2.4</span>
+      </div>
+      <p class="text-[11px] text-slate-400">Keep the Virtual Circle Glowing ✨ • Serverless Architecture</p>
     </div>
   </div>
 
-  <div class="mb-6 bg-navy-900/90 p-3.5 rounded-2xl border border-gold-500/30 shadow-inner">
-    <div class="flex items-center justify-between mb-1">
-      <span class="text-[10px] uppercase tracking-wider text-gold-400 font-bold">Founders Cohort</span>
-      <span class="text-[10px] bg-gold-500/20 text-gold-400 px-1.5 py-0.5 rounded font-bold">Active</span>
+  <div class="hidden md:flex items-center space-x-3">
+    <div class="bg-navy-800 px-3.5 py-1.5 rounded-xl border border-slate-700 text-xs">
+      <span class="text-slate-400">Founders Cohort:</span> <strong class="text-gold-400">15 Newbies / 35 Seasoned</strong>
     </div>
-    <p class="text-xs font-bold text-white">15 Newbies / 35 Seasoned Spots</p>
-  </div>
-
-  <nav class="space-y-1.5 flex-1 overflow-y-auto pr-1">
-    <button onclick="switchTab('feed')" id="nav-feed" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all bg-gold-500 text-navy-900 shadow-md">
-      <span class="text-base">📡</span><span>Community & Hubs</span>
-    </button>
-    <button onclick="switchTab('matching')" id="nav-matching" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
-      <span class="text-base">🎯</span><span>Client Matching Engine</span>
-    </button>
-    <button onclick="switchTab('mentor')" id="nav-mentor" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
-      <span class="text-base">👩‍🏫</span><span>Mentor Proposals & SOPs</span>
-    </button>
-    <button onclick="switchTab('schedule')" id="nav-schedule" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
-      <span class="text-base">📅</span><span>Scheduling & Booking</span>
-    </button>
-    <button onclick="switchTab('recruiter')" id="nav-recruiter" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
-      <span class="text-base">🤝</span><span>Recruiter & Headhunter Hub</span>
-    </button>
-    <button onclick="switchTab('scam')" id="nav-scam" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
-      <span class="text-base">🛡️</span><span>Scam-Buster & Red Flags</span>
-    </button>
-  </nav>
-
-  <div class="pt-4 border-t border-slate-700/50 text-center">
-    <span class="text-[10px] text-emerald-400 font-semibold block">🛡️ Multi-Factor KYC Secured</span>
-    <span class="text-[10px] text-slate-400">Zero-Cost Serverless Backend</span>
-  </div>
-</aside>
-
-<!-- Mobile Sticky Header -->
-<header class="md:hidden bg-navy-800 border-b border-slate-700/50 px-4 py-3 sticky top-0 z-40 flex items-center justify-between shadow-lg">
-  <div class="flex items-center space-x-2.5">
-    <div class="w-9 h-9 rounded-xl bg-gold-500 flex items-center justify-center text-navy-900 font-heading font-bold text-sm">TVC</div>
-    <div>
-      <span class="font-heading font-bold text-sm text-white block leading-tight">The Virtual Circle</span>
-      <span class="text-[10px] text-gold-400">Keep the Circle Glowing ✨</span>
+    <div class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> KYC Security Active
     </div>
   </div>
-  <span class="text-xs bg-gold-500/20 text-gold-400 px-2.5 py-1 rounded-full font-bold">KYC Verified</span>
 </header>
 
-<!-- Mobile Bottom Navigation Bar -->
-<nav class="md:hidden fixed bottom-0 inset-x-0 bg-navy-800 border-t border-slate-700/80 z-50 px-1 py-2 flex justify-around items-center shadow-2xl">
-  <button onclick="switchTab('feed')" id="mob-nav-feed" class="flex flex-col items-center p-1 text-gold-400">
-    <span class="text-base">📡</span><span class="text-[9px] font-semibold">Feed</span>
-  </button>
-  <button onclick="switchTab('matching')" id="mob-nav-matching" class="flex flex-col items-center p-1 text-slate-400 hover:text-white">
-    <span class="text-base">🎯</span><span class="text-[9px] font-semibold">Matching</span>
-  </button>
-  <button onclick="switchTab('mentor')" id="mob-nav-mentor" class="flex flex-col items-center p-1 text-slate-400 hover:text-white">
-    <span class="text-base">👩‍🏫</span><span class="text-[9px] font-semibold">Mentor</span>
-  </button>
-  <button onclick="switchTab('schedule')" id="mob-nav-schedule" class="flex flex-col items-center p-1 text-slate-400 hover:text-white">
-    <span class="text-base">📅</span><span class="text-[9px] font-semibold">Schedule</span>
-  </button>
-  <button onclick="switchTab('recruiter')" id="mob-nav-recruiter" class="flex flex-col items-center p-1 text-slate-400 hover:text-white">
-    <span class="text-base">🤝</span><span class="text-[9px] font-semibold">Recruiters</span>
-  </button>
-</nav>
+<!-- Main Dashboard Container -->
+<div class="flex-1 flex flex-col md:flex-row max-w-[1600px] w-full mx-auto p-4 md:p-8 gap-8">
 
-<!-- Main App Content Area -->
-<main class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-8 z-10">
+  <!-- Left Sidebar Navigation Hub -->
+  <aside class="w-full md:w-72 space-y-2 shrink-0">
+    <div class="text-[10px] uppercase tracking-wider text-slate-500 font-bold px-3 mb-2">Platform Modules</div>
+    <button onclick="switchTab('overview')" id="nav-overview" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl font-heading font-semibold text-sm transition-all bg-gold-500 text-navy-950 shadow-lg shadow-gold-500/10">
+      <span class="text-base">📊</span><span>Executive Overview</span>
+    </button>
+    <button onclick="switchTab('feed')" id="nav-feed" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl font-heading font-semibold text-sm transition-all text-slate-300 bg-navy-900 border border-slate-800 hover:border-slate-700">
+      <span class="text-base">📡</span><span>Regional Hubs (#luzon/vis/min)</span>
+    </button>
+    <button onclick="switchTab('matching')" id="nav-matching" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl font-heading font-semibold text-sm transition-all text-slate-300 bg-navy-900 border border-slate-800 hover:border-slate-700">
+      <span class="text-base">🎯</span><span>Client Matching Machinery</span>
+    </button>
+    <button onclick="switchTab('mentor')" id="nav-mentor" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl font-heading font-semibold text-sm transition-all text-slate-300 bg-navy-900 border border-slate-800 hover:border-slate-700">
+      <span class="text-base">👩‍🏫</span><span>Mentor Proposals & SOPs</span>
+    </button>
+    <button onclick="switchTab('recruiter')" id="nav-recruiter" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl font-heading font-semibold text-sm transition-all text-slate-300 bg-navy-900 border border-slate-800 hover:border-slate-700">
+      <span class="text-base">🤝</span><span>Recruiter & Headhunter Hub</span>
+    </button>
+    <button onclick="switchTab('scam')" id="nav-scam" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl font-heading font-semibold text-sm transition-all text-slate-300 bg-navy-900 border border-slate-800 hover:border-slate-700">
+      <span class="text-base">🛡️</span><span>Scam-Buster & Blacklists</span>
+    </button>
+    <button onclick="switchTab('studio')" id="nav-studio" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl font-heading font-semibold text-sm transition-all text-slate-300 bg-navy-900 border border-slate-800 hover:border-slate-700">
+      <span class="text-base">💻</span><span>Build My Platform Studio</span>
+    </button>
+  </aside>
 
-  <!-- 1. Community Feed & Regional Hubs -->
-  <div id="feed-tab" class="tab-content space-y-6">
-    <div class="bg-navy-800 p-6 md:p-8 rounded-3xl border border-slate-700/50 shadow-xl">
-      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-        <div>
-          <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">Nationwide Ecosystem</span>
-          <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Community Feed & Regional Hubs</h2>
-          <p class="text-sm text-slate-400 mt-1">Connect instantly across Luzon, Visayas, and Mindanao.</p>
+  <!-- Right Dynamic Content Area -->
+  <main class="flex-1 space-y-6">
+
+    <!-- 1. Executive Overview Tab -->
+    <div id="overview-tab" class="tab-content space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="bg-navy-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
+          <span class="text-xs text-slate-400 font-medium">Active Talent Pool</span>
+          <h3 class="text-3xl font-heading font-extrabold text-white mt-2">50 <span class="text-gold-400 text-lg">Founders</span></h3>
+          <p class="text-[11px] text-emerald-400 mt-1">15 Newbies • 30 Seasoned</p>
         </div>
-        <div class="flex flex-wrap gap-2">
-          <button class="px-3 py-1.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs">#luzon-vas</button>
-          <button class="px-3 py-1.5 bg-slate-700 text-white rounded-xl font-heading font-bold text-xs hover:bg-slate-600">#visayas-vas</button>
-          <button class="px-3 py-1.5 bg-slate-700 text-white rounded-xl font-heading font-bold text-xs hover:bg-slate-600">#mindanao-vas</button>
+        <div class="bg-navy-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
+          <span class="text-xs text-slate-400 font-medium">Pending Matches</span>
+          <h3 class="text-3xl font-heading font-extrabold text-white mt-2">128</h3>
+          <p class="text-[11px] text-gold-400 mt-1">US & AU SME Founders</p>
+        </div>
+        <div class="bg-navy-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
+          <span class="text-xs text-slate-400 font-medium">Mentor Submissions</span>
+          <h3 class="text-3xl font-heading font-extrabold text-white mt-2">14</h3>
+          <p class="text-[11px] text-emerald-400 mt-1">Material Splits Active</p>
+        </div>
+        <div class="bg-navy-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
+          <span class="text-xs text-slate-400 font-medium">Ecosystem Security</span>
+          <h3 class="text-3xl font-heading font-extrabold text-emerald-400 mt-2">100%</h3>
+          <p class="text-[11px] text-slate-400 mt-1">Zero-Trust KYC Enforced</p>
         </div>
       </div>
-      <textarea id="feed-input" class="w-full bg-navy-900 border border-slate-700 rounded-2xl p-4 text-sm text-white focus:outline-none focus:border-gold-500 shadow-inner" rows="3" placeholder="Share a professional win or check in from your region..."></textarea>
-      <div class="flex justify-between items-center mt-4">
-        <span class="text-xs text-emerald-400 font-semibold flex items-center gap-1">🛡️ Multi-Factor KYC Active</span>
-        <button onclick="postFeed()" class="px-5 py-2.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-xs hover:bg-gold-400 shadow transition">Post to Circle ✨</button>
+
+      <div class="bg-navy-900 p-8 rounded-3xl border border-slate-800 shadow-xl space-y-4">
+        <h3 class="text-xl font-heading font-bold text-white">System Architecture & Governance Status</h3>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          The Virtual Circle is fully operational on a zero-cost serverless framework (Cloudflare Pages + Google Apps Script Webhook). All core monetization loops—including coach-set mentor rates with material-based commission splits, tiered recruiter subscription passes, and AI scam-buster boards—are synchronized to the relational database.
+        </p>
       </div>
     </div>
-    <div id="feed-stream" class="space-y-4">
-      <div class="bg-navy-800 p-5 rounded-2xl border border-slate-700/50 shadow">
-        <div class="flex items-center justify-between mb-2">
-          <div class="flex items-center space-x-3">
-            <div class="w-9 h-9 rounded-full bg-gold-500/20 text-gold-400 flex items-center justify-center font-bold text-sm">TV</div>
+
+    <!-- 2. Community Feed & Regional Hubs Tab -->
+    <div id="feed-tab" class="tab-content hidden space-y-6">
+      <div class="bg-navy-900 p-8 rounded-3xl border border-slate-800 shadow-xl space-y-6">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-2xl font-heading font-extrabold text-white">Regional Hubs & Community Feed</h2>
+            <p class="text-sm text-slate-400">Broadcast updates across Luzon, Visayas, and Mindanao.</p>
+          </div>
+          <div class="flex gap-2">
+            <span class="px-3 py-1 bg-gold-500 text-navy-950 font-bold text-xs rounded-xl">#luzon-vas</span>
+            <span class="px-3 py-1 bg-navy-800 text-slate-300 font-bold text-xs rounded-xl">#visayas-vas</span>
+            <span class="px-3 py-1 bg-navy-800 text-slate-300 font-bold text-xs rounded-xl">#mindanao-vas</span>
+          </div>
+        </div>
+        <textarea id="feed-input" class="w-full bg-navy-950 border border-slate-800 rounded-2xl p-4 text-sm text-white focus:outline-none focus:border-gold-500 shadow-inner" rows="3" placeholder="Share a professional milestone or regional update..."></textarea>
+        <div class="flex justify-between items-center">
+          <span class="text-xs text-emerald-400 font-semibold">🛡️ KYC Verified Session</span>
+          <button onclick="postFeed()" class="px-6 py-2.5 bg-gold-500 text-navy-950 rounded-xl font-heading font-extrabold text-xs shadow-lg hover:bg-gold-400 transition">Broadcast Update ✨</button>
+        </div>
+      </div>
+      <div id="feed-stream" class="space-y-4">
+        <div class="bg-navy-900 p-6 rounded-3xl border border-slate-800 shadow-lg space-y-2">
+          <div class="flex justify-between items-center text-xs">
+            <span class="font-bold text-white">Lei Lee Ann Abut <span class="text-gold-400 font-normal">(#luzon-vas)</span></span>
+            <span class="bg-emerald-500/10 text-emerald-400 px-2.5 py-0.5 rounded-full font-bold">KYC Verified</span>
+          </div>
+          <p class="text-sm text-slate-300">Executive workflows and pre-litigation automation scripts deployed successfully. Keep the Virtual Circle Glowing ✨</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Client Matching Machinery Tab -->
+    <div id="matching-tab" class="tab-content hidden space-y-6">
+      <div class="bg-navy-900 p-8 rounded-3xl border border-slate-800 shadow-xl space-y-6">
+        <div>
+          <h2 class="text-2xl font-heading font-extrabold text-white">Automated Client Matching Machinery</h2>
+          <p class="text-sm text-slate-400">Pair global founders with top-tier Founders Cohort VAs instantly.</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Specialization Track</label>
+            <select class="w-full bg-navy-950 border border-slate-800 rounded-xl p-3 text-xs text-white">
+              <option>Personal Injury Pre-Litigation & Filevine</option>
+              <option>Executive Assistance & C-Suite Operations</option>
+              <option>Real Estate Property Management & Airbnb</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Shift Requirement</label>
+            <select class="w-full bg-navy-950 border border-slate-800 rounded-xl p-3 text-xs text-white">
+              <option>US Graveyard Shift</option>
+              <option>Australian Business Hours</option>
+            </select>
+          </div>
+        </div>
+        <button onclick="runMatching()" class="w-full py-3 bg-gold-500 text-navy-950 rounded-xl font-heading font-extrabold text-xs shadow-lg hover:bg-gold-400 transition">Execute Matching Algorithm 🎯</button>
+        <div id="matching-results" class="hidden pt-4 border-t border-slate-800 space-y-3">
+          <div class="bg-navy-950 p-4 rounded-2xl border border-gold-500/30 flex justify-between items-center text-xs">
             <div>
-              <h4 class="font-bold text-sm text-white">Founders Cohort Member <span class="text-xs text-gold-400 font-normal">#luzon-vas</span></h4>
-              <p class="text-[10px] text-slate-400">Verified KYC User • Manila Hub</p>
+              <strong class="text-white text-sm">Founders Seasoned VA #42 (Manila)</strong>
+              <p class="text-slate-400">AI Simulation Score: <span class="text-gold-400 font-bold">98.2%</span> • Legal & Executive Certified</p>
+            </div>
+            <button onclick="alert('Client unlock protocol initiated.')" class="px-4 py-2 bg-gold-500 text-navy-950 rounded-xl font-heading font-bold">Unlock Profile 🔓</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Mentor Proposals & SOPs Tab -->
+    <div id="mentor-tab" class="tab-content hidden space-y-6">
+      <div class="bg-navy-900 p-8 rounded-3xl border border-slate-800 shadow-xl space-y-6">
+        <div>
+          <h2 class="text-2xl font-heading font-extrabold text-white">Mentor Rate Proposal & Material Portal</h2>
+          <p class="text-sm text-slate-400">Coaches set custom rates; platform operates on flexible material-based splits.</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input type="text" id="m-name" class="bg-navy-950 border border-slate-800 rounded-xl p-3 text-xs text-white" placeholder="Mentor Full Name">
+          <input type="text" id="m-rate" class="bg-navy-950 border border-slate-800 rounded-xl p-3 text-xs text-white" placeholder="Custom Rate (e.g. \$60/hr)">
+        </div>
+        <input type="text" id="m-title" class="w-full bg-navy-950 border border-slate-800 rounded-xl p-3 text-xs text-white" placeholder="Training Module / Simulation Framework Title">
+        <button onclick="submitMentor()" class="w-full py-3 bg-gold-500 text-navy-950 rounded-xl font-heading font-extrabold text-xs shadow-lg hover:bg-gold-400 transition">Submit Proposal & Embedded Materials 🚀</button>
+        <div id="m-feedback" class="hidden p-3 bg-navy-950 rounded-xl border border-emerald-500/30 text-xs text-emerald-400"></div>
+      </div>
+    </div>
+
+    <!-- 5. Recruiter & Headhunter Hub Tab -->
+    <div id="recruiter-tab" class="tab-content hidden space-y-6">
+      <div class="bg-navy-900 p-8 rounded-3xl border border-slate-800 shadow-xl space-y-6">
+        <div class="flex justify-between items-center">
+          <div>
+            <h2 class="text-2xl font-heading font-extrabold text-white">Multi-Tiered Recruiter & Headhunter Hub</h2>
+            <p class="text-sm text-slate-400">Manage candidate pipelines and tiered subscription passes.</p>
+          </div>
+          <button onclick="alert('Recruiter subscription pass generated.')" class="px-5 py-2.5 bg-gold-500 text-navy-950 rounded-xl font-heading font-extrabold text-xs">Activate Recruiter Pass 🤝</button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="bg-navy-950 p-5 rounded-2xl border border-slate-800">
+            <h4 class="font-bold text-gold-400 text-sm">Basic Recruiter</h4>
+            <p class="text-xs text-slate-400 mt-1">₱2,500/mo directory access.</p>
+          </div>
+          <div class="bg-navy-950 p-5 rounded-2xl border border-gold-500/40">
+            <h4 class="font-bold text-gold-400 text-sm">Pro Headhunter</h4>
+            <p class="text-xs text-slate-400 mt-1">₱6,000/mo pipeline management.</p>
+          </div>
+          <div class="bg-navy-950 p-5 rounded-2xl border border-slate-800">
+            <h4 class="font-bold text-gold-400 text-sm">Enterprise Agency</h4>
+            <p class="text-xs text-slate-400 mt-1">Custom placement success split.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. Scam-Buster & Blacklists Tab -->
+    <div id="scam-tab" class="tab-content hidden space-y-6">
+      <div class="bg-navy-900 p-8 rounded-3xl border border-slate-800 shadow-xl space-y-6">
+        <div>
+          <h2 class="text-2xl font-heading font-extrabold text-white">Scam-Buster Intel & Company Risk Board</h2>
+          <p class="text-sm text-slate-400">AI instant scam detector and verified employer blacklists.</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="bg-navy-950 p-5 rounded-2xl border border-slate-800 space-y-3">
+            <h4 class="font-bold text-sm text-white">Gemini AI Scam Scan</h4>
+            <textarea id="scam-box" class="w-full bg-navy-900 border border-slate-800 rounded-xl p-3 text-xs text-white" rows="3" placeholder="Paste job offer text..."></textarea>
+            <button onclick="runScam()" class="w-full py-2 bg-gold-500 text-navy-950 rounded-xl font-heading font-bold text-xs">Analyze Job Post 🛡️</button>
+            <div id="scam-out" class="hidden p-3 bg-navy-900 rounded-xl border border-red-500/30 text-xs text-red-300"></div>
+          </div>
+          <div class="bg-navy-950 p-5 rounded-2xl border border-slate-800 space-y-3">
+            <h4 class="font-bold text-sm text-white">Blacklisted Registry</h4>
+            <div class="p-3 bg-navy-900 rounded-xl border border-red-500/30 flex justify-between items-center text-xs">
+              <span class="text-red-400 font-bold">FakeAgency Global</span>
+              <span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-bold">High Risk</span>
             </div>
           </div>
-          <span class="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">KYC Verified</span>
-        </div>
-        <p class="text-sm text-slate-300">Welcome to The Virtual Circle. All sub-features including Mentor Rate proposals, automated client matching, and recruiter hubs are fully operational. Keep the Circle Glowing ✨</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- 2. Client Matching Machinery -->
-  <div id="matching-tab" class="tab-content hidden space-y-6">
-    <div class="bg-navy-800 p-6 md:p-8 rounded-3xl border border-slate-700/50 shadow-xl space-y-6">
-      <div>
-        <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">Automated Pairing System</span>
-        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Client-to-VA Matching Machinery</h2>
-        <p class="text-sm text-slate-400 mt-1">Founders specify requirements to instantly match with pre-vetted Founders Cohort talent based on AI simulation scores and skill tags.</p>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1">Required Niche / Specialization</label>
-          <select id="match-niche" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white">
-            <option>Personal Injury & Legal Support</option>
-            <option>Executive Assistance & Calendar Management</option>
-            <option>E-Commerce & Shopify Operations</option>
-            <option>Bookkeeping & Quickbooks Reconciliation</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1">Shift Preference</label>
-          <select id="match-shift" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white">
-            <option>US Graveyard Shift (EST/PST)</option>
-            <option>Australian Business Hours (AEST)</option>
-            <option>Flexible / Remote</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1">Minimum AI Simulation Score</label>
-          <select id="match-score" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white">
-            <option>90%+ (Top Tier Founders Cohort)</option>
-            <option>80%+ (Seasoned VAs)</option>
-          </select>
-        </div>
-      </div>
-
-      <button onclick="runMatching()" class="w-full py-3 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-xs shadow hover:bg-gold-400 transition">Run Compatibility Match 🎯</button>
-
-      <div id="matching-results" class="hidden space-y-3 pt-4 border-t border-slate-700/50">
-        <h4 class="font-bold text-sm text-white">Top Compatible Talent Found:</h4>
-        <div class="bg-navy-900 p-4 rounded-xl border border-gold-500/30 flex items-center justify-between">
-          <div>
-            <h5 class="font-bold text-sm text-white">Founders Seasoned VA #104 (Manila Hub)</h5>
-            <p class="text-xs text-slate-400">Match Compatibility: <strong class="text-gold-400">96.8%</strong> • Filevine & Legal Certified</p>
-          </div>
-          <button onclick="alert('Unlock request sent to candidate!')" class="px-4 py-2 bg-gold-500 text-navy-900 rounded-lg font-heading font-bold text-xs">Unlock Profile 🔓</button>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- 3. Mentor Rate Proposal & Material Submission Portal -->
-  <div id="mentor-tab" class="tab-content hidden space-y-6">
-    <div class="bg-navy-800 p-6 md:p-8 rounded-3xl border border-slate-700/50 shadow-xl space-y-6">
-      <div>
-        <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">Coach & Mentor Program</span>
-        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Mentor Rate Proposal & Material Submission</h2>
-        <p class="text-sm text-slate-400 mt-1">Coaches set their own rates. Platform earns commission based on training modules and simulation frameworks embedded into the academy[cite: 1].</p>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1">Mentor Full Name</label>
-          <input type="text" id="mentor-name" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white" placeholder="e.g., Coach Sarah Jenkins">
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1">Proposed Hourly Rate (USD / PHP)</label>
-          <input type="text" id="mentor-rate" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white" placeholder="e.g., \$50/hr or ₱2,500/hr">
-        </div>
-      </div>
-
-      <div>
-        <label class="block text-xs font-semibold text-slate-300 mb-1">Training Module & Simulation Framework Title</label>
-        <input type="text" id="mentor-mod-title" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white" placeholder="e.g., Advanced Personal Injury Demand Letter Playbook">
-      </div>
-
-      <div>
-        <label class="block text-xs font-semibold text-slate-300 mb-1">Embedded Material / SOP Link (Google Drive / Notion / PDF)</label>
-        <input type="url" id="mentor-link" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white" placeholder="https://docs.google.com/...">
-      </div>
-
-      <button onclick="submitMentorProposal()" class="w-full py-3 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-xs shadow hover:bg-gold-400 transition">Submit Rate Proposal & Materials 🚀</button>
-      <div id="mentor-feedback" class="hidden p-3 bg-navy-900 rounded-xl border border-emerald-500/40 text-xs text-emerald-300"></div>
-    </div>
-  </div>
-
-  <!-- 4. Scheduling & Booking Platform -->
-  <div id="schedule-tab" class="tab-content hidden space-y-6">
-    <div class="bg-navy-800 p-6 md:p-8 rounded-3xl border border-slate-700/50 shadow-xl space-y-6">
-      <div>
-        <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">Integrated Calendars</span>
-        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Scheduling & Booking Platform</h2>
-        <p class="text-sm text-slate-400 mt-1">Book 1-on-1 mentorship sessions, expert coaching tracks, or telehealth wellness consultations.</p>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1">Select Service Type</label>
-          <select class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white">
-            <option>1-on-1 Mentor Strategy Session</option>
-            <option>Telehealth Burnout & Sleep Consultation</option>
-            <option>AI Simulation Skills Assessment</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1">Preferred Date</label>
-          <input type="date" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white">
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1">Time Slot (Asia/Manila)</label>
-          <select class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white">
-            <option>09:00 PM - 10:00 PM (Graveyard Shift)</option>
-            <option>02:00 PM - 03:00 PM (Day Shift)</option>
-          </select>
-        </div>
-      </div>
-
-      <button onclick="alert('Booking confirmed! Calendar invite & Meet link dispatched via webhook.')" class="w-full py-3 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-xs shadow hover:bg-gold-400 transition">Confirm & Book Session 📅</button>
-    </div>
-  </div>
-
-  <!-- 5. Recruiter & Headhunter Hub -->
-  <div id="recruiter-tab" class="tab-content hidden space-y-6">
-    <div class="bg-navy-800 p-6 md:p-8 rounded-3xl border border-slate-700/50 shadow-xl space-y-6">
-      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">Independent Recruiter Hub</span>
-          <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Multi-Tiered Recruiter & Headhunter Platform</h2>
-          <p class="text-sm text-slate-400 mt-1">Publish verified candidate portfolios, manage client placement pipelines, and handle tiered subscription passes[cite: 1].</p>
-        </div>
-        <button onclick="alert('Recruiter subscription pass activated!')" class="px-5 py-2.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-xs shadow">Activate Recruiter Pass 🤝</button>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
-        <div class="bg-navy-900 p-5 rounded-2xl border border-slate-700">
-          <h4 class="font-bold text-gold-400 text-sm">Tier 1: Basic Pass</h4>
-          <p class="text-xs text-slate-400 mt-1">₱2,500/mo for candidate portfolio directory access.</p>
-        </div>
-        <div class="bg-navy-900 p-5 rounded-2xl border border-gold-500">
-          <h4 class="font-bold text-gold-400 text-sm">Tier 2: Pro Headhunter</h4>
-          <p class="text-xs text-slate-400 mt-1">₱6,000/mo with automated client pipeline tools.</p>
-        </div>
-        <div class="bg-navy-900 p-5 rounded-2xl border border-slate-700">
-          <h4 class="font-bold text-gold-400 text-sm">Tier 3: Enterprise Agency</h4>
-          <p class="text-xs text-slate-400 mt-1">Custom success-fee split for managed squad pairing.</p>
-        </div>
+    <!-- 7. Build My Platform Studio Tab -->
+    <div id="studio-tab" class="tab-content hidden space-y-6">
+      <div class="bg-navy-900 p-8 rounded-3xl border border-slate-800 shadow-xl text-center space-y-6">
+        <h2 class="text-3xl font-heading font-extrabold text-white">"Build My Platform" Agency Studio</h2>
+        <p class="text-sm text-slate-300 max-w-xl mx-auto">Custom zero-cost serverless platform builds for international founders (\$1,500 – \$12,000 tiers).</p>
+        <button onclick="alert('Studio build request submitted!')" class="px-8 py-3 bg-gold-500 text-navy-950 rounded-xl font-heading font-extrabold text-sm shadow-xl">Request Custom Build 💻</button>
       </div>
     </div>
-  </div>
 
-  <!-- 6. Scam-Buster & Company Risk Board -->
-  <div id="scam-tab" class="tab-content hidden space-y-6">
-    <div class="bg-navy-800 p-6 md:p-8 rounded-3xl border border-slate-700/50 shadow-xl space-y-6">
-      <div>
-        <span class="text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full font-bold">Zero-Tolerance Protection</span>
-        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Scam-Buster Intel & Company Red-Flag Board</h2>
-        <p class="text-sm text-slate-400 mt-1">AI-powered instant job scanner and crowdsourced employment risk registry[cite: 1].</p>
-      </div>
+  </main>
+</div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div class="bg-navy-900 p-5 rounded-2xl border border-slate-700 space-y-3">
-          <h3 class="font-heading font-bold text-md text-white">Gemini AI Instant Scam Detector</h3>
-          <textarea id="scam-input" class="w-full bg-navy-800 border border-slate-700 rounded-xl p-3 text-xs text-white" rows="3" placeholder="Paste job description here..."></textarea>
-          <button onclick="runScamScan()" class="w-full py-2.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs">Run Scam Analysis 🛡️</button>
-          <div id="scam-result" class="hidden p-3 bg-navy-800 rounded-xl border border-red-500/40 text-xs text-red-300"></div>
+<footer class="text-center py-6 text-xs text-slate-500 border-t border-slate-900 mt-12">
+  © 2026 The Virtual Circle Philippines. Keep the Virtual Circle Glowing ✨
+</footer>
+
+<script>
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  document.getElementById(tabId + '-tab').classList.remove

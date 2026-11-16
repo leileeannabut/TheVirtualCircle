@@ -1,0 +1,21 @@
+name = "virtual-circle"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "virtual-circle"
+database_id = "REPLACE_WITH_YOUR_D1_ID"
+
+[[r2_buckets]]
+binding = "KYC"
+bucket_name = "virtual-circle-kyc"   # keep PRIVATE; never attach a public domain
+
+[[kv_namespaces]]
+binding = "KV"
+id = "REPLACE_WITH_YOUR_KV_ID"
+
+# Secrets (wrangler pages secret put NAME):
+#   PEPPER            long random string, used to hash government ID numbers
+#   TURNSTILE_SECRET  optional, Cloudflare Turnstile secret key
+#   SEMAPHORE_KEY     optional, Semaphore SMS API key (OTP prints to logs if unset)

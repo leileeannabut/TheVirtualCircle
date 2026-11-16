@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The Virtual Circle - Scam-Proof Remote Talent Ecosystem</title>
+<title>The Virtual Circle - Scam-Proof Remote Talent & Agency Ecosystem</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script>
@@ -27,116 +27,210 @@ tailwind.config = {
 </script>
 <style>
 .watermark {
-  position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.04; z-index: 50;
-  background-image: repeating-linear-gradient(45deg, #1E3A8A 0, #1E3A8A 100px, transparent 0, transparent 200px);
-  font-family: 'League Spartan', sans-serif; font-size: 14px; color: #1E3A8A; display: flex; flex-wrap: wrap; align-content: space-around; overflow: hidden;
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.03; z-index: 50;
+  background-image: repeating-linear-gradient(45deg, #EAB308 0, #EAB308 100px, transparent 0, transparent 200px);
+  font-family: 'League Spartan', sans-serif; font-size: 14px; color: #EAB308; display: flex; flex-wrap: wrap; align-content: space-around; overflow: hidden;
 }
 body { user-select: none; -webkit-touch-callout: none; }
 </style>
 </head>
-<body class="bg-navy-900 text-slate-100 font-sans antialiased min-h-screen flex flex-col justify-between pb-20 md:pb-0 md:pl-64">
-<div class="watermark">TVC SECURE SECURE TVC SECURE SECURE TVC SECURE SECURE</div>
+<body class="bg-navy-900 text-slate-100 font-sans antialiased min-h-screen flex flex-col justify-between pb-20 md:pb-0 md:pl-72">
+<div class="watermark">KEEP THE VIRTUAL CIRCLE GLOWING ✨ SCAM-PROOF ECOSYSTEM ✨ LUZON VISAYAS MINDANAO</div>
 
-<aside class="hidden md:flex flex-col w-64 bg-navy-800 border-r border-slate-700/50 fixed inset-y-0 left-0 z-40 p-6">
+<!-- Sidebar Navigation -->
+<aside class="hidden md:flex flex-col w-72 bg-navy-800 border-r border-slate-700/50 fixed inset-y-0 left-0 z-40 p-6 shadow-2xl">
   <div class="flex items-center space-x-3 mb-8">
-    <div class="w-10 h-10 rounded-xl bg-gold-500 flex items-center justify-center text-navy-900 font-heading font-bold text-xl shadow-lg">TVC</div>
+    <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-gold-500 to-amber-400 flex items-center justify-center text-navy-900 font-heading font-extrabold text-2xl shadow-lg">TVC</div>
     <div>
-      <h1 class="font-heading font-bold text-xl tracking-wide text-white">The Virtual Circle</h1>
-      <p class="text-xs text-gold-400">Keep the Virtual Circle Glowing ✨</p>
+      <h1 class="font-heading font-bold text-lg tracking-wide text-white">The Virtual Circle</h1>
+      <p class="text-[11px] text-gold-400 font-medium">Keep the Circle Glowing ✨</p>
     </div>
   </div>
+
+  <div class="mb-4 bg-navy-900/80 p-3 rounded-xl border border-gold-500/30">
+    <span class="text-[10px] uppercase tracking-wider text-gold-400 font-bold block">Founders Cohort Active</span>
+    <p class="text-xs font-bold text-white mt-0.5">15 Newbies / 35 Seasoned Spots</p>
+  </div>
+
   <nav class="space-y-1.5 flex-1 overflow-y-auto pr-1">
-    <button onclick="switchTab('feed')" id="nav-feed" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all bg-gold-500 text-navy-900 shadow-md">
-      <span>📡</span><span>VA News Feed</span>
+    <button onclick="switchTab('feed')" id="nav-feed" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all bg-gold-500 text-navy-900 shadow-md">
+      <span class="text-base">📡</span><span>Community & Regional Hubs</span>
     </button>
-    <button onclick="switchTab('directory')" id="nav-directory" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
-      <span>🗂️</span><span>Talent & Recruiter Hub</span>
+    <button onclick="switchTab('talent')" id="nav-talent" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+      <span class="text-base">🗂️</span><span>Talent & Recruiter Hub</span>
     </button>
-    <button onclick="switchTab('scam')" id="nav-scam" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
-      <span>🛡️</span><span>Scam-Buster & Red Flags</span>
+    <button onclick="switchTab('scam')" id="nav-scam" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+      <span class="text-base">🛡️</span><span>Scam-Buster & Red-Flag Board</span>
     </button>
-    <button onclick="switchTab('sim')" id="nav-sim" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
-      <span>🚀</span><span>AI Role Simulations</span>
+    <button onclick="switchTab('academy')" id="nav-academy" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+      <span class="text-base">🚀</span><span>AI Sims & Mentor Rates</span>
     </button>
-    <button onclick="switchTab('studio')" id="nav-studio" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
-      <span>💻</span><span>Build My Platform</span>
+    <button onclick="switchTab('studio')" id="nav-studio" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+      <span class="text-base">💻</span><span>Build My Platform Studio</span>
     </button>
   </nav>
-  <div class="pt-6 border-t border-slate-700/50 space-y-3">
+
+  <div class="pt-6 border-t border-slate-700/50">
     <div class="bg-navy-900/60 p-3 rounded-xl border border-gold-500/20 text-center">
-      <span class="text-[10px] text-gold-400 font-bold block mb-1">☕ Keep the Circle Glowing</span>
-      <p class="text-[11px] text-slate-300 mb-2">Support server & AI costs via GCash/Maya.</p>
+      <span class="text-[10px] text-gold-400 font-bold block mb-1">🔒 Multi-Factor KYC Secured</span>
+      <p class="text-[10px] text-slate-400">Zero-Cost Serverless Cloudflare Architecture</p>
     </div>
   </div>
 </aside>
 
-<main class="flex-1 max-w-5xl w-full mx-auto p-4 md:p-8 z-10">
-  <!-- Feed Tab -->
+<!-- Mobile Header -->
+<header class="md:hidden bg-navy-800 border-b border-slate-700/50 px-4 py-3 sticky top-0 z-40 flex items-center justify-between">
+  <div class="flex items-center space-x-2">
+    <div class="w-8 h-8 rounded-lg bg-gold-500 flex items-center justify-center text-navy-900 font-heading font-bold text-sm">TVC</div>
+    <span class="font-heading font-bold text-base text-white">The Virtual Circle</span>
+  </div>
+  <button onclick="switchTab('feed')" class="px-3 py-1 bg-gold-500 text-navy-900 rounded-lg font-heading font-bold text-xs">Menu</button>
+</header>
+
+<!-- Main Dynamic Content Area -->
+<main class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-8 z-10">
+
+  <!-- 1. Community & Regional Hubs Tab -->
   <div id="feed-tab" class="tab-content space-y-6">
-    <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50">
-      <h2 class="text-xl font-heading font-bold text-white mb-2">The Virtual Circle Community Feed ✨</h2>
-      <p class="text-sm text-slate-400 mb-4">Connecting verified Philippine VAs across Luzon, Visayas, and Mindanao with global founders.</p>
-      <textarea class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-gold-500" rows="3" placeholder="Share a win or check in from your regional hub..."></textarea>
-      <div class="flex justify-between items-center mt-3">
-        <span class="text-xs text-gold-400 font-semibold">🛡️ KYC Verified Session</span>
-        <button class="px-4 py-2 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs hover:bg-gold-400 transition">Post Update ✨</button>
+    <div class="bg-navy-800 p-6 md:p-8 rounded-3xl border border-slate-700/50 shadow-xl">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div>
+          <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">Nationwide Ecosystem</span>
+          <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">The Virtual Circle Feed & Regional Hubs</h2>
+          <p class="text-sm text-slate-400 mt-1">Select your regional hub to connect with local VAs across Luzon, Visayas, and Mindanao.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button class="px-3 py-1.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs">#luzon-vas</button>
+          <button class="px-3 py-1.5 bg-slate-700 text-white rounded-xl font-heading font-bold text-xs hover:bg-slate-600">#visayas-vas</button>
+          <button class="px-3 py-1.5 bg-slate-700 text-white rounded-xl font-heading font-bold text-xs hover:bg-slate-600">#mindanao-vas</button>
+          <button class="px-3 py-1.5 bg-slate-700 text-white rounded-xl font-heading font-bold text-xs hover:bg-slate-600">#grand-eyeball-ph</button>
+        </div>
+      </div>
+      <textarea class="w-full bg-navy-900 border border-slate-700 rounded-2xl p-4 text-sm text-white focus:outline-none focus:border-gold-500 shadow-inner" rows="3" placeholder="Share a professional win, ask for workflow advice, or post a shift check-in..."></textarea>
+      <div class="flex justify-between items-center mt-4">
+        <span class="text-xs text-emerald-400 font-semibold flex items-center gap-1">🛡️ Multi-Factor KYC Active</span>
+        <button class="px-5 py-2.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-xs hover:bg-gold-400 shadow transition">Post to Circle ✨</button>
       </div>
     </div>
   </div>
 
-  <!-- Talent & Recruiter Hub Tab -->
-  <div id="directory-tab" class="tab-content hidden space-y-6">
-    <h2 class="text-2xl font-heading font-bold text-white mb-2">Talent Marketplace & Recruiter Hub</h2>
-    <p class="text-sm text-slate-400 mb-4">Browse pre-vetted 50-VA Founders Cohort talent or connect with verified headhunters.</p>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="bg-navy-800 p-5 rounded-2xl border border-slate-700/50">
-        <span class="text-xs bg-gold-500/20 text-gold-400 px-2 py-0.5 rounded-full font-semibold">Founders Seasoned VA</span>
-        <h3 class="font-heading font-bold text-lg text-white mt-2">Executive Case Manager</h3>
-        <p class="text-xs text-slate-400 mt-1">Multi-platform Filevine & Legal Support specialist based in Manila.</p>
+  <!-- 2. Talent & Recruiter Hub Tab -->
+  <div id="talent-tab" class="tab-content hidden space-y-6">
+    <div class="flex items-center justify-between">
+      <div>
+        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white">Multi-Tiered Recruiter & Talent Hub</h2>
+        <p class="text-sm text-slate-400 mt-1">Pre-vetted 50-VA Founders Cohort and independent headhunter placement ecosystem.</p>
       </div>
-      <div class="bg-navy-800 p-5 rounded-2xl border border-slate-700/50">
-        <span class="text-xs bg-mint/20 text-mint px-2 py-0.5 rounded-full font-semibold">Verified Headhunter</span>
-        <h3 class="font-heading font-bold text-lg text-white mt-2">Global Executive Search Hub</h3>
-        <p class="text-xs text-slate-400 mt-1">Connecting US/AU SME founders with Managed VA Squads.</p>
+      <button class="px-4 py-2 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs shadow">List as Recruiter 🤝</button>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-lg">
+        <span class="text-xs bg-gold-500/20 text-gold-400 px-2.5 py-1 rounded-full font-bold">Founders Seasoned VA</span>
+        <h3 class="font-heading font-bold text-lg text-white mt-3">Personal Injury Case Manager</h3>
+        <p class="text-xs text-slate-400 mt-1">Specializing in pre-litigation workflows, subrogation, and Filevine automation.</p>
+        <div class="mt-4 pt-4 border-t border-slate-700/50 flex items-center justify-between text-xs">
+          <span class="text-emerald-400 font-semibold">AI Sim Score: 94%</span>
+          <span class="text-gold-400 font-bold">Verified KYC ✓</span>
+        </div>
+      </div>
+      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-lg">
+        <span class="text-xs bg-mint/20 text-mint px-2.5 py-1 rounded-full font-bold">Managed VA Squad</span>
+        <h3 class="font-heading font-bold text-lg text-white mt-3">Executive Assistant Pod</h3>
+        <p class="text-xs text-slate-400 mt-1">Senior VA Pod Leader paired with trained Newbie VAs on monthly retainer.</p>
+        <div class="mt-4 pt-4 border-t border-slate-700/50 flex items-center justify-between text-xs">
+          <span class="text-slate-300">Retainer: $2,000/mo</span>
+          <span class="text-gold-400 font-bold">Ready to Deploy</span>
+        </div>
+      </div>
+      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-lg">
+        <span class="text-xs bg-coral/20 text-coral px-2.5 py-1 rounded-full font-bold">Headhunter Partner</span>
+        <h3 class="font-heading font-bold text-lg text-white mt-3">Global Executive Search Hub</h3>
+        <p class="text-xs text-slate-400 mt-1">Independent headhunter managing US/AU client placement pipelines.</p>
+        <div class="mt-4 pt-4 border-t border-slate-700/50 flex items-center justify-between text-xs">
+          <span class="text-slate-300">Tier: Pro Recruiter</span>
+          <span class="text-gold-400 font-bold">Active Pass ✓</span>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Scam-Buster Tab -->
+  <!-- 3. Scam-Buster & Red-Flag Board Tab -->
   <div id="scam-tab" class="tab-content hidden space-y-6">
-    <h2 class="text-2xl font-heading font-bold text-white mb-2">Scam-Buster Intel & Company Red-Flag Board</h2>
-    <p class="text-sm text-slate-400 mb-4">Verify client job posts or search company risk scores instantly.</p>
-    <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 space-y-4">
-      <input type="text" placeholder="Paste suspicious job post or company name here..." class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-sm text-white">
-      <button class="px-4 py-2 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs">Run Gemini AI Scam Scan 🛡️</button>
+    <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white">Scam-Buster Intel & Company Red-Flag Board</h2>
+    <p class="text-sm text-slate-400 mt-1">Protecting Philippine VAs across Luzon, Visayas, and Mindanao with AI-powered risk scoring.</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-xl space-y-4">
+        <h3 class="font-heading font-bold text-lg text-white">Gemini AI Scam Detector</h3>
+        <p class="text-xs text-slate-400">Paste any job post, client email, or WhatsApp/Telegram recruitment message to scan for red flags.</p>
+        <textarea class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-gold-500" rows="4" placeholder="Paste job description or suspicious offer here..."></textarea>
+        <button class="w-full py-2.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs shadow">Run Instant Scam Analysis 🛡️</button>
+      </div>
+      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-xl space-y-4">
+        <h3 class="font-heading font-bold text-lg text-white">Company Risk & Blacklist Board</h3>
+        <p class="text-xs text-slate-400">Search reported employers, fake agencies, and withheld wage complaints.</p>
+        <input type="text" placeholder="Search company name or domain..." class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-gold-500">
+        <div class="bg-navy-900 p-4 rounded-xl border border-red-500/30 flex items-center justify-between">
+          <div>
+            <h4 class="font-bold text-sm text-red-400">FakeAgency Corp (Blacklisted)</h4>
+            <p class="text-[11px] text-slate-400">Reported for upfront training fees & ghosting.</p>
+          </div>
+          <span class="text-xs bg-red-500/20 text-red-400 px-2.5 py-1 rounded-full font-bold">High Risk</span>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- Simulations Tab -->
-  <div id="sim-tab" class="tab-content hidden space-y-6">
-    <h2 class="text-2xl font-heading font-bold text-white mb-2">AI Role Simulations Academy ("VA Bestie")</h2>
-    <p class="text-sm text-slate-400 mb-4">Test real-world workplace scenarios before client placement.</p>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="bg-navy-800 p-5 rounded-2xl border border-slate-700/50">
-        <h3 class="font-heading font-bold text-lg text-white">Executive Inbox Chaos</h3>
-        <p class="text-xs text-slate-400 mt-1">Simulate calendar double-bookings and emergency client escalation.</p>
+  <!-- 4. AI Sims & Mentor Rates Tab -->
+  <div id="academy-tab" class="tab-content hidden space-y-6">
+    <div class="flex items-center justify-between">
+      <div>
+        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white">AI Role Simulations & Mentor Academy</h2>
+        <p class="text-sm text-slate-400 mt-1">Coaches set their own rates; platform earns commission based on embedded training materials.</p>
       </div>
-      <div class="bg-navy-800 p-5 rounded-2xl border border-slate-700/50">
-        <h3 class="font-heading font-bold text-lg text-white">Pre-Litigation & Lien Negotiation</h3>
-        <p class="text-xs text-slate-400 mt-1">Simulate personal injury workflow tasks and demand preparation.</p>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-lg">
+        <span class="text-xs bg-gold-500/20 text-gold-400 px-2.5 py-1 rounded-full font-bold">VA Bestie AI Simulator</span>
+        <h3 class="font-heading font-bold text-lg text-white mt-3">Executive Calendar & Crisis Management</h3>
+        <p class="text-xs text-slate-400 mt-1">Real-world scenario testing for C-suite schedule conflicts and urgent escalations.</p>
+        <button class="mt-4 px-4 py-2 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs">Launch Simulation 🚀</button>
+      </div>
+      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-lg">
+        <span class="text-xs bg-mint/20 text-mint px-2.5 py-1 rounded-full font-bold">Expert Mentor Track</span>
+        <h3 class="font-heading font-bold text-lg text-white mt-3">Legal Subrogation & Demand Mastery</h3>
+        <p class="text-xs text-slate-400 mt-1">Custom coaching with embedded SOPs and material-based revenue splits.</p>
+        <div class="mt-4 flex items-center justify-between">
+          <span class="text-xs text-slate-300 font-semibold">Mentor Rate: $50/hr</span>
+          <button class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-heading font-bold text-xs">Book Session ✨</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Studio Tab -->
+  <!-- 5. Build My Platform Studio Tab -->
   <div id="studio-tab" class="tab-content hidden space-y-6">
-    <h2 class="text-2xl font-heading font-bold text-white mb-2">"Build My Platform" Agency Studio</h2>
-    <p class="text-sm text-slate-400 mb-4">Commission custom serverless platform builds modeled on The Virtual Circle.</p>
-    <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 text-center space-y-4">
-      <p class="text-sm text-slate-300">Get your zero-cost serverless architecture built for your agency or startup.</p>
-      <button class="px-6 py-2.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs">Request Platform Build ✨</button>
+    <div class="bg-navy-800 p-8 rounded-3xl border border-slate-700/50 shadow-2xl text-center space-y-6">
+      <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">High-Ticket B2B Service</span>
+      <h2 class="text-3xl font-heading font-extrabold text-white">"Build My Platform" Vibe-Coder Agency Studio</h2>
+      <p class="text-sm text-slate-300 max-w-xl mx-auto">Commission custom, zero-cost serverless platform builds modeled on The Virtual Circle's architecture for international founders and agencies ($1,500 – $12,000 tiers).</p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-left max-w-3xl mx-auto pt-4">
+        <div class="bg-navy-900 p-4 rounded-xl border border-slate-700">
+          <h4 class="font-bold text-gold-400 text-sm">MVP Starter ($1.5k)</h4>
+          <p class="text-xs text-slate-400 mt-1">Landing page & basic webhook database.</p>
+        </div>
+        <div class="bg-navy-900 p-4 rounded-xl border border-gold-500">
+          <h4 class="font-bold text-gold-400 text-sm">Full Platform ($4.5k)</h4>
+          <p class="text-xs text-slate-400 mt-1">Full LMS, KYC validation & CRM boards.</p>
+        </div>
+        <div class="bg-navy-900 p-4 rounded-xl border border-slate-700">
+          <h4 class="font-bold text-gold-400 text-sm">Enterprise Suite ($10k+)</h4>
+          <p class="text-xs text-slate-400 mt-1">Multi-tiered headhunter & managed squads.</p>
+        </div>
+      </div>
+      <button class="px-8 py-3 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-sm shadow-xl hover:bg-gold-400 transition">Request Custom Build Consultation 💻</button>
     </div>
   </div>
+
 </main>
 
 <footer class="text-center py-6 text-xs text-slate-500 border-t border-slate-800 mt-12">
@@ -147,6 +241,15 @@ body { user-select: none; -webkit-touch-callout: none; }
 function switchTab(tabId) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
   document.getElementById(tabId + '-tab').classList.remove('hidden');
+  document.querySelectorAll('aside nav button').forEach(btn => {
+    btn.classList.remove('bg-gold-500', 'text-navy-900', 'shadow-md');
+    btn.classList.add('text-slate-300', 'hover:bg-navy-700/50');
+  });
+  const activeBtn = document.getElementById('nav-' + tabId);
+  if (activeBtn) {
+    activeBtn.classList.remove('text-slate-300', 'hover:bg-navy-700/50');
+    activeBtn.classList.add('bg-gold-500', 'text-navy-900', 'shadow-md');
+  }
 }
 </script>
 </body>

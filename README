@@ -1,0 +1,40 @@
+# The Virtual Circle — Phase 1, Part 1 (Foundation)
+
+Cloudflare Pages + Functions + D1 + R2 + KV. No frameworks.
+
+## Included
+- Landing page with live founders slot counter and countdown
+- Register / login / logout, mobile OTP (Semaphore), PBKDF2 passwords, HttpOnly sessions, CSRF origin check, KV rate limits
+- Atomic founders-slot claiming (15 Newbie / 35 Seasoned)
+- KYC: ID + selfie upload to a private R2 bucket, HMAC-hashed ID numbers, duplicate ID and duplicate device flags
+- Admin KYC review queue (audit-logged); approval activates the account and awards Verified + Founding badges
+- Full Phase 1 D1 schema (community tables included; their endpoints ship in Part 2)
+- Nocturnal Sanctuary design tokens
+
+## Deploy
+```bash
+npm i -g wrangler && wrangler login
+wrangler d1 create virtual-circle            # paste database_id into wrangler.toml
+wrangler kv namespace create KV              # paste id into wrangler.toml
+wrangler r2 bucket create virtual-circle-kyc # keep private
+wrangler d1 execute virtual-circle --remote --file=db/schema.sql
+wrangler d1 execute virtual-circle --remote --file=db/seed.sql
+wrangler pages project create virtual-circle
+wrangler pages secret put PEPPER --project-name virtual-circle          # long random string
+wrangler pages secret put SEMAPHORE_KEY --project-name virtual-circle   # optional; without it OTPs print to logs
+wrangler pages secret put TURNSTILE_SECRET --project-name virtual-circle # optional
+wrangler pages deploy public --project-name virtual-circle
+```
+Bind D1 (`DB`), R2 (`KYC`) and KV (`KV`) to the Pages project in the dashboard (Settings → Bindings) if `wrangler.toml` bindings are not picked up.
+
+## Make yourself admin
+Register normally, then:
+```bash
+wrangler d1 execute virtual-circle --remote --command "UPDATE users SET role='admin', status='active' WHERE email='you@example.com'"
+```
+Review submissions at `/admin.html`.
+
+## Before launch
+- Set `countdown_ends_at` and `crisis_resources` in the `config` table; verify every hotline number.
+- Turnstile: the server check is ready; add the widget to `join.html` and send its token as `turnstile`.
+- Get a privacy review (RA 10173) for KYC retention and data-subject requests.

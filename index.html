@@ -25,20 +25,129 @@ tailwind.config = {
   }
 }
 </script>
+<style>
+.watermark {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.04; z-index: 50;
+  background-image: repeating-linear-gradient(45deg, #1E3A8A 0, #1E3A8A 100px, transparent 0, transparent 200px);
+  font-family: 'League Spartan', sans-serif; font-size: 14px; color: #1E3A8A; display: flex; flex-wrap: wrap; align-content: space-around; overflow: hidden;
+}
+body { user-select: none; -webkit-touch-callout: none; }
+</style>
 </head>
-<body class="bg-navy-900 text-slate-100 font-sans antialiased min-h-screen flex flex-col justify-between p-6">
-  <div class="max-w-4xl mx-auto text-center my-auto space-y-6">
-    <div class="w-16 h-16 rounded-2xl bg-gold-500 mx-auto flex items-center justify-center text-navy-900 font-heading font-bold text-2xl shadow-xl">TVC</div>
-    <h1 class="font-heading font-bold text-4xl text-white">The Virtual Circle ✨</h1>
-    <p class="text-slate-300 max-w-xl mx-auto">Keep the Virtual Circle Glowing. Autonomous, scam-proof ecosystem connecting Philippine VAs across Luzon, Visayas, and Mindanao with global founders.</p>
-    <div class="p-6 bg-navy-800 border border-gold-500/30 rounded-2xl max-w-md mx-auto">
-      <span class="text-xs text-gold-400 font-bold uppercase tracking-wider block mb-1">Founders Cohort Status</span>
-      <p class="text-lg font-bold text-white">15 Newbies / 35 Seasoned VAs</p>
-      <p class="text-xs text-slate-400 mt-2">Serverless backend active via Google Apps Script webhooks.</p>
+<body class="bg-navy-900 text-slate-100 font-sans antialiased min-h-screen flex flex-col justify-between pb-20 md:pb-0 md:pl-64">
+<div class="watermark">TVC SECURE SECURE TVC SECURE SECURE TVC SECURE SECURE</div>
+
+<aside class="hidden md:flex flex-col w-64 bg-navy-800 border-r border-slate-700/50 fixed inset-y-0 left-0 z-40 p-6">
+  <div class="flex items-center space-x-3 mb-8">
+    <div class="w-10 h-10 rounded-xl bg-gold-500 flex items-center justify-center text-navy-900 font-heading font-bold text-xl shadow-lg">TVC</div>
+    <div>
+      <h1 class="font-heading font-bold text-xl tracking-wide text-white">The Virtual Circle</h1>
+      <p class="text-xs text-gold-400">Keep the Virtual Circle Glowing ✨</p>
     </div>
   </div>
-  <footer class="text-center text-xs text-slate-500">
-    © 2026 The Virtual Circle Philippines. Keep the Virtual Circle Glowing ✨
-  </footer>
+  <nav class="space-y-1.5 flex-1 overflow-y-auto pr-1">
+    <button onclick="switchTab('feed')" id="nav-feed" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all bg-gold-500 text-navy-900 shadow-md">
+      <span>📡</span><span>VA News Feed</span>
+    </button>
+    <button onclick="switchTab('directory')" id="nav-directory" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+      <span>🗂️</span><span>Talent & Recruiter Hub</span>
+    </button>
+    <button onclick="switchTab('scam')" id="nav-scam" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+      <span>🛡️</span><span>Scam-Buster & Red Flags</span>
+    </button>
+    <button onclick="switchTab('sim')" id="nav-sim" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+      <span>🚀</span><span>AI Role Simulations</span>
+    </button>
+    <button onclick="switchTab('studio')" id="nav-studio" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+      <span>💻</span><span>Build My Platform</span>
+    </button>
+  </nav>
+  <div class="pt-6 border-t border-slate-700/50 space-y-3">
+    <div class="bg-navy-900/60 p-3 rounded-xl border border-gold-500/20 text-center">
+      <span class="text-[10px] text-gold-400 font-bold block mb-1">☕ Keep the Circle Glowing</span>
+      <p class="text-[11px] text-slate-300 mb-2">Support server & AI costs via GCash/Maya.</p>
+    </div>
+  </div>
+</aside>
+
+<main class="flex-1 max-w-5xl w-full mx-auto p-4 md:p-8 z-10">
+  <!-- Feed Tab -->
+  <div id="feed-tab" class="tab-content space-y-6">
+    <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50">
+      <h2 class="text-xl font-heading font-bold text-white mb-2">The Virtual Circle Community Feed ✨</h2>
+      <p class="text-sm text-slate-400 mb-4">Connecting verified Philippine VAs across Luzon, Visayas, and Mindanao with global founders.</p>
+      <textarea class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-gold-500" rows="3" placeholder="Share a win or check in from your regional hub..."></textarea>
+      <div class="flex justify-between items-center mt-3">
+        <span class="text-xs text-gold-400 font-semibold">🛡️ KYC Verified Session</span>
+        <button class="px-4 py-2 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs hover:bg-gold-400 transition">Post Update ✨</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Talent & Recruiter Hub Tab -->
+  <div id="directory-tab" class="tab-content hidden space-y-6">
+    <h2 class="text-2xl font-heading font-bold text-white mb-2">Talent Marketplace & Recruiter Hub</h2>
+    <p class="text-sm text-slate-400 mb-4">Browse pre-vetted 50-VA Founders Cohort talent or connect with verified headhunters.</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-navy-800 p-5 rounded-2xl border border-slate-700/50">
+        <span class="text-xs bg-gold-500/20 text-gold-400 px-2 py-0.5 rounded-full font-semibold">Founders Seasoned VA</span>
+        <h3 class="font-heading font-bold text-lg text-white mt-2">Executive Case Manager</h3>
+        <p class="text-xs text-slate-400 mt-1">Multi-platform Filevine & Legal Support specialist based in Manila.</p>
+      </div>
+      <div class="bg-navy-800 p-5 rounded-2xl border border-slate-700/50">
+        <span class="text-xs bg-mint/20 text-mint px-2 py-0.5 rounded-full font-semibold">Verified Headhunter</span>
+        <h3 class="font-heading font-bold text-lg text-white mt-2">Global Executive Search Hub</h3>
+        <p class="text-xs text-slate-400 mt-1">Connecting US/AU SME founders with Managed VA Squads.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scam-Buster Tab -->
+  <div id="scam-tab" class="tab-content hidden space-y-6">
+    <h2 class="text-2xl font-heading font-bold text-white mb-2">Scam-Buster Intel & Company Red-Flag Board</h2>
+    <p class="text-sm text-slate-400 mb-4">Verify client job posts or search company risk scores instantly.</p>
+    <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 space-y-4">
+      <input type="text" placeholder="Paste suspicious job post or company name here..." class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-sm text-white">
+      <button class="px-4 py-2 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs">Run Gemini AI Scam Scan 🛡️</button>
+    </div>
+  </div>
+
+  <!-- Simulations Tab -->
+  <div id="sim-tab" class="tab-content hidden space-y-6">
+    <h2 class="text-2xl font-heading font-bold text-white mb-2">AI Role Simulations Academy ("VA Bestie")</h2>
+    <p class="text-sm text-slate-400 mb-4">Test real-world workplace scenarios before client placement.</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-navy-800 p-5 rounded-2xl border border-slate-700/50">
+        <h3 class="font-heading font-bold text-lg text-white">Executive Inbox Chaos</h3>
+        <p class="text-xs text-slate-400 mt-1">Simulate calendar double-bookings and emergency client escalation.</p>
+      </div>
+      <div class="bg-navy-800 p-5 rounded-2xl border border-slate-700/50">
+        <h3 class="font-heading font-bold text-lg text-white">Pre-Litigation & Lien Negotiation</h3>
+        <p class="text-xs text-slate-400 mt-1">Simulate personal injury workflow tasks and demand preparation.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Studio Tab -->
+  <div id="studio-tab" class="tab-content hidden space-y-6">
+    <h2 class="text-2xl font-heading font-bold text-white mb-2">"Build My Platform" Agency Studio</h2>
+    <p class="text-sm text-slate-400 mb-4">Commission custom serverless platform builds modeled on The Virtual Circle.</p>
+    <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 text-center space-y-4">
+      <p class="text-sm text-slate-300">Get your zero-cost serverless architecture built for your agency or startup.</p>
+      <button class="px-6 py-2.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs">Request Platform Build ✨</button>
+    </div>
+  </div>
+</main>
+
+<footer class="text-center py-6 text-xs text-slate-500 border-t border-slate-800 mt-12">
+  © 2026 The Virtual Circle Philippines. Keep the Virtual Circle Glowing ✨
+</footer>
+
+<script>
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  document.getElementById(tabId + '-tab').classList.remove('hidden');
+}
+</script>
 </body>
 </html>

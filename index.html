@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The Virtual Circle - Scam-Proof Remote Talent & Agency Ecosystem</title>
+<title>The Virtual Circle - Full-Fledged Remote Talent & Agency Ecosystem</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script>
@@ -34,7 +34,7 @@ tailwind.config = {
 </style>
 </head>
 <body class="bg-navy-900 text-slate-100 font-sans antialiased min-h-screen flex flex-col justify-between pb-24 md:pb-0 md:pl-72">
-<div class="watermark">KEEP THE VIRTUAL CIRCLE GLOWING ✨ SCAM-PROOF ECOSYSTEM ✨ LUZON VISAYAS MINDANAO ✨ RECRUITER HUB</div>
+<div class="watermark">THE VIRTUAL CIRCLE ✨ MENTOR PORTAL ✨ CLIENT MATCHING ✨ RECRUITER HUB ✨ SCHEDULING</div>
 
 <!-- Desktop Sidebar Navigation -->
 <aside class="hidden md:flex flex-col w-72 bg-navy-800 border-r border-slate-700/50 fixed inset-y-0 left-0 z-40 p-6 shadow-2xl">
@@ -58,17 +58,20 @@ tailwind.config = {
     <button onclick="switchTab('feed')" id="nav-feed" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all bg-gold-500 text-navy-900 shadow-md">
       <span class="text-base">📡</span><span>Community & Hubs</span>
     </button>
-    <button onclick="switchTab('talent')" id="nav-talent" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
-      <span class="text-base">🗂️</span><span>Talent & Recruiter Hub</span>
+    <button onclick="switchTab('matching')" id="nav-matching" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+      <span class="text-base">🎯</span><span>Client Matching Engine</span>
+    </button>
+    <button onclick="switchTab('mentor')" id="nav-mentor" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+      <span class="text-base">👩‍🏫</span><span>Mentor Proposals & SOPs</span>
+    </button>
+    <button onclick="switchTab('schedule')" id="nav-schedule" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+      <span class="text-base">📅</span><span>Scheduling & Booking</span>
+    </button>
+    <button onclick="switchTab('recruiter')" id="nav-recruiter" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+      <span class="text-base">🤝</span><span>Recruiter & Headhunter Hub</span>
     </button>
     <button onclick="switchTab('scam')" id="nav-scam" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
       <span class="text-base">🛡️</span><span>Scam-Buster & Red Flags</span>
-    </button>
-    <button onclick="switchTab('academy')" id="nav-academy" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
-      <span class="text-base">🚀</span><span>AI Sims & Mentor Rates</span>
-    </button>
-    <button onclick="switchTab('studio')" id="nav-studio" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
-      <span class="text-base">💻</span><span>Build My Platform Studio</span>
     </button>
   </nav>
 
@@ -90,29 +93,29 @@ tailwind.config = {
   <span class="text-xs bg-gold-500/20 text-gold-400 px-2.5 py-1 rounded-full font-bold">KYC Verified</span>
 </header>
 
-<!-- Mobile Bottom Navigation Bar (App Experience) -->
-<nav class="md:hidden fixed bottom-0 inset-x-0 bg-navy-800 border-t border-slate-700/80 z-50 px-2 py-2 flex justify-around items-center shadow-2xl">
+<!-- Mobile Bottom Navigation Bar -->
+<nav class="md:hidden fixed bottom-0 inset-x-0 bg-navy-800 border-t border-slate-700/80 z-50 px-1 py-2 flex justify-around items-center shadow-2xl">
   <button onclick="switchTab('feed')" id="mob-nav-feed" class="flex flex-col items-center p-1 text-gold-400">
-    <span class="text-lg">📡</span><span class="text-[10px] font-semibold">Feed</span>
+    <span class="text-base">📡</span><span class="text-[9px] font-semibold">Feed</span>
   </button>
-  <button onclick="switchTab('talent')" id="mob-nav-talent" class="flex flex-col items-center p-1 text-slate-400 hover:text-white">
-    <span class="text-lg">🗂️</span><span class="text-[10px] font-semibold">Talent</span>
+  <button onclick="switchTab('matching')" id="mob-nav-matching" class="flex flex-col items-center p-1 text-slate-400 hover:text-white">
+    <span class="text-base">🎯</span><span class="text-[9px] font-semibold">Matching</span>
   </button>
-  <button onclick="switchTab('scam')" id="mob-nav-scam" class="flex flex-col items-center p-1 text-slate-400 hover:text-white">
-    <span class="text-lg">🛡️</span><span class="text-[10px] font-semibold">Scam-Buster</span>
+  <button onclick="switchTab('mentor')" id="mob-nav-mentor" class="flex flex-col items-center p-1 text-slate-400 hover:text-white">
+    <span class="text-base">👩‍🏫</span><span class="text-[9px] font-semibold">Mentor</span>
   </button>
-  <button onclick="switchTab('academy')" id="mob-nav-academy" class="flex flex-col items-center p-1 text-slate-400 hover:text-white">
-    <span class="text-lg">🚀</span><span class="text-[10px] font-semibold">Academy</span>
+  <button onclick="switchTab('schedule')" id="mob-nav-schedule" class="flex flex-col items-center p-1 text-slate-400 hover:text-white">
+    <span class="text-base">📅</span><span class="text-[9px] font-semibold">Schedule</span>
   </button>
-  <button onclick="switchTab('studio')" id="mob-nav-studio" class="flex flex-col items-center p-1 text-slate-400 hover:text-white">
-    <span class="text-lg">💻</span><span class="text-[10px] font-semibold">Studio</span>
+  <button onclick="switchTab('recruiter')" id="mob-nav-recruiter" class="flex flex-col items-center p-1 text-slate-400 hover:text-white">
+    <span class="text-base">🤝</span><span class="text-[9px] font-semibold">Recruiters</span>
   </button>
 </nav>
 
 <!-- Main App Content Area -->
 <main class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-8 z-10">
 
-  <!-- 1. Community & Regional Hubs Tab -->
+  <!-- 1. Community Feed & Regional Hubs -->
   <div id="feed-tab" class="tab-content space-y-6">
     <div class="bg-navy-800 p-6 md:p-8 rounded-3xl border border-slate-700/50 shadow-xl">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -122,20 +125,17 @@ tailwind.config = {
           <p class="text-sm text-slate-400 mt-1">Connect instantly across Luzon, Visayas, and Mindanao.</p>
         </div>
         <div class="flex flex-wrap gap-2">
-          <button onclick="filterHub('luzon')" class="px-3 py-1.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs">#luzon-vas</button>
-          <button onclick="filterHub('visayas')" class="px-3 py-1.5 bg-slate-700 text-white rounded-xl font-heading font-bold text-xs hover:bg-slate-600">#visayas-vas</button>
-          <button onclick="filterHub('mindanao')" class="px-3 py-1.5 bg-slate-700 text-white rounded-xl font-heading font-bold text-xs hover:bg-slate-600">#mindanao-vas</button>
-          <button onclick="filterHub('eyeball')" class="px-3 py-1.5 bg-slate-700 text-white rounded-xl font-heading font-bold text-xs hover:bg-slate-600">#grand-eyeball</button>
+          <button class="px-3 py-1.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs">#luzon-vas</button>
+          <button class="px-3 py-1.5 bg-slate-700 text-white rounded-xl font-heading font-bold text-xs hover:bg-slate-600">#visayas-vas</button>
+          <button class="px-3 py-1.5 bg-slate-700 text-white rounded-xl font-heading font-bold text-xs hover:bg-slate-600">#mindanao-vas</button>
         </div>
       </div>
-      <textarea id="feed-input" class="w-full bg-navy-900 border border-slate-700 rounded-2xl p-4 text-sm text-white focus:outline-none focus:border-gold-500 shadow-inner" rows="3" placeholder="Share a professional win, workflow tip, or check in from your region..."></textarea>
+      <textarea id="feed-input" class="w-full bg-navy-900 border border-slate-700 rounded-2xl p-4 text-sm text-white focus:outline-none focus:border-gold-500 shadow-inner" rows="3" placeholder="Share a professional win or check in from your region..."></textarea>
       <div class="flex justify-between items-center mt-4">
         <span class="text-xs text-emerald-400 font-semibold flex items-center gap-1">🛡️ Multi-Factor KYC Active</span>
         <button onclick="postFeed()" class="px-5 py-2.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-xs hover:bg-gold-400 shadow transition">Post to Circle ✨</button>
       </div>
     </div>
-
-    <!-- Live Feed Stream -->
     <div id="feed-stream" class="space-y-4">
       <div class="bg-navy-800 p-5 rounded-2xl border border-slate-700/50 shadow">
         <div class="flex items-center justify-between mb-2">
@@ -148,4 +148,173 @@ tailwind.config = {
           </div>
           <span class="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">KYC Verified</span>
         </div>
-        <p class="text-sm text-slate-300">Welcome to The Virtual Circle! Our zero-cost serverless backend is fully live across Google Sheets and Apps Script. Keep the Virtual Circle Glowing ✨</
+        <p class="text-sm text-slate-300">Welcome to The Virtual Circle. All sub-features including Mentor Rate proposals, automated client matching, and recruiter hubs are fully operational. Keep the Circle Glowing ✨</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Client Matching Machinery -->
+  <div id="matching-tab" class="tab-content hidden space-y-6">
+    <div class="bg-navy-800 p-6 md:p-8 rounded-3xl border border-slate-700/50 shadow-xl space-y-6">
+      <div>
+        <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">Automated Pairing System</span>
+        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Client-to-VA Matching Machinery</h2>
+        <p class="text-sm text-slate-400 mt-1">Founders specify requirements to instantly match with pre-vetted Founders Cohort talent based on AI simulation scores and skill tags.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Required Niche / Specialization</label>
+          <select id="match-niche" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white">
+            <option>Personal Injury & Legal Support</option>
+            <option>Executive Assistance & Calendar Management</option>
+            <option>E-Commerce & Shopify Operations</option>
+            <option>Bookkeeping & Quickbooks Reconciliation</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Shift Preference</label>
+          <select id="match-shift" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white">
+            <option>US Graveyard Shift (EST/PST)</option>
+            <option>Australian Business Hours (AEST)</option>
+            <option>Flexible / Remote</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Minimum AI Simulation Score</label>
+          <select id="match-score" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white">
+            <option>90%+ (Top Tier Founders Cohort)</option>
+            <option>80%+ (Seasoned VAs)</option>
+          </select>
+        </div>
+      </div>
+
+      <button onclick="runMatching()" class="w-full py-3 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-xs shadow hover:bg-gold-400 transition">Run Compatibility Match 🎯</button>
+
+      <div id="matching-results" class="hidden space-y-3 pt-4 border-t border-slate-700/50">
+        <h4 class="font-bold text-sm text-white">Top Compatible Talent Found:</h4>
+        <div class="bg-navy-900 p-4 rounded-xl border border-gold-500/30 flex items-center justify-between">
+          <div>
+            <h5 class="font-bold text-sm text-white">Founders Seasoned VA #104 (Manila Hub)</h5>
+            <p class="text-xs text-slate-400">Match Compatibility: <strong class="text-gold-400">96.8%</strong> • Filevine & Legal Certified</p>
+          </div>
+          <button onclick="alert('Unlock request sent to candidate!')" class="px-4 py-2 bg-gold-500 text-navy-900 rounded-lg font-heading font-bold text-xs">Unlock Profile 🔓</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Mentor Rate Proposal & Material Submission Portal -->
+  <div id="mentor-tab" class="tab-content hidden space-y-6">
+    <div class="bg-navy-800 p-6 md:p-8 rounded-3xl border border-slate-700/50 shadow-xl space-y-6">
+      <div>
+        <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">Coach & Mentor Program</span>
+        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Mentor Rate Proposal & Material Submission</h2>
+        <p class="text-sm text-slate-400 mt-1">Coaches set their own rates. Platform earns commission based on training modules and simulation frameworks embedded into the academy[cite: 1].</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Mentor Full Name</label>
+          <input type="text" id="mentor-name" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white" placeholder="e.g., Coach Sarah Jenkins">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Proposed Hourly Rate (USD / PHP)</label>
+          <input type="text" id="mentor-rate" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white" placeholder="e.g., \$50/hr or ₱2,500/hr">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-slate-300 mb-1">Training Module & Simulation Framework Title</label>
+        <input type="text" id="mentor-mod-title" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white" placeholder="e.g., Advanced Personal Injury Demand Letter Playbook">
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-slate-300 mb-1">Embedded Material / SOP Link (Google Drive / Notion / PDF)</label>
+        <input type="url" id="mentor-link" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white" placeholder="https://docs.google.com/...">
+      </div>
+
+      <button onclick="submitMentorProposal()" class="w-full py-3 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-xs shadow hover:bg-gold-400 transition">Submit Rate Proposal & Materials 🚀</button>
+      <div id="mentor-feedback" class="hidden p-3 bg-navy-900 rounded-xl border border-emerald-500/40 text-xs text-emerald-300"></div>
+    </div>
+  </div>
+
+  <!-- 4. Scheduling & Booking Platform -->
+  <div id="schedule-tab" class="tab-content hidden space-y-6">
+    <div class="bg-navy-800 p-6 md:p-8 rounded-3xl border border-slate-700/50 shadow-xl space-y-6">
+      <div>
+        <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">Integrated Calendars</span>
+        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Scheduling & Booking Platform</h2>
+        <p class="text-sm text-slate-400 mt-1">Book 1-on-1 mentorship sessions, expert coaching tracks, or telehealth wellness consultations.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Select Service Type</label>
+          <select class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white">
+            <option>1-on-1 Mentor Strategy Session</option>
+            <option>Telehealth Burnout & Sleep Consultation</option>
+            <option>AI Simulation Skills Assessment</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Preferred Date</label>
+          <input type="date" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Time Slot (Asia/Manila)</label>
+          <select class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-xs text-white">
+            <option>09:00 PM - 10:00 PM (Graveyard Shift)</option>
+            <option>02:00 PM - 03:00 PM (Day Shift)</option>
+          </select>
+        </div>
+      </div>
+
+      <button onclick="alert('Booking confirmed! Calendar invite & Meet link dispatched via webhook.')" class="w-full py-3 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-xs shadow hover:bg-gold-400 transition">Confirm & Book Session 📅</button>
+    </div>
+  </div>
+
+  <!-- 5. Recruiter & Headhunter Hub -->
+  <div id="recruiter-tab" class="tab-content hidden space-y-6">
+    <div class="bg-navy-800 p-6 md:p-8 rounded-3xl border border-slate-700/50 shadow-xl space-y-6">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">Independent Recruiter Hub</span>
+          <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Multi-Tiered Recruiter & Headhunter Platform</h2>
+          <p class="text-sm text-slate-400 mt-1">Publish verified candidate portfolios, manage client placement pipelines, and handle tiered subscription passes[cite: 1].</p>
+        </div>
+        <button onclick="alert('Recruiter subscription pass activated!')" class="px-5 py-2.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-xs shadow">Activate Recruiter Pass 🤝</button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+        <div class="bg-navy-900 p-5 rounded-2xl border border-slate-700">
+          <h4 class="font-bold text-gold-400 text-sm">Tier 1: Basic Pass</h4>
+          <p class="text-xs text-slate-400 mt-1">₱2,500/mo for candidate portfolio directory access.</p>
+        </div>
+        <div class="bg-navy-900 p-5 rounded-2xl border border-gold-500">
+          <h4 class="font-bold text-gold-400 text-sm">Tier 2: Pro Headhunter</h4>
+          <p class="text-xs text-slate-400 mt-1">₱6,000/mo with automated client pipeline tools.</p>
+        </div>
+        <div class="bg-navy-900 p-5 rounded-2xl border border-slate-700">
+          <h4 class="font-bold text-gold-400 text-sm">Tier 3: Enterprise Agency</h4>
+          <p class="text-xs text-slate-400 mt-1">Custom success-fee split for managed squad pairing.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. Scam-Buster & Company Risk Board -->
+  <div id="scam-tab" class="tab-content hidden space-y-6">
+    <div class="bg-navy-800 p-6 md:p-8 rounded-3xl border border-slate-700/50 shadow-xl space-y-6">
+      <div>
+        <span class="text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full font-bold">Zero-Tolerance Protection</span>
+        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Scam-Buster Intel & Company Red-Flag Board</h2>
+        <p class="text-sm text-slate-400 mt-1">AI-powered instant job scanner and crowdsourced employment risk registry[cite: 1].</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-navy-900 p-5 rounded-2xl border border-slate-700 space-y-3">
+          <h3 class="font-heading font-bold text-md text-white">Gemini AI Instant Scam Detector</h3>
+          <textarea id="scam-input" class="w-full bg-navy-800 border border-slate-700 rounded-xl p-3 text-xs text-white" rows="3" placeholder="Paste job description here..."></textarea>
+          <button onclick="runScamScan()" class="w-full py-2.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs">Run Scam Analysis 🛡️</button>
+          <div id="scam-result" class="hidden p-3 bg-navy-800 rounded-xl border border-red-500/40 text-xs text-red-300"></div>

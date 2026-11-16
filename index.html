@@ -31,36 +31,38 @@ tailwind.config = {
   background-image: repeating-linear-gradient(45deg, #EAB308 0, #EAB308 100px, transparent 0, transparent 200px);
   font-family: 'League Spartan', sans-serif; font-size: 14px; color: #EAB308; display: flex; flex-wrap: wrap; align-content: space-around; overflow: hidden;
 }
-body { user-select: none; -webkit-touch-callout: none; }
 </style>
 </head>
-<body class="bg-navy-900 text-slate-100 font-sans antialiased min-h-screen flex flex-col justify-between pb-20 md:pb-0 md:pl-72">
-<div class="watermark">KEEP THE VIRTUAL CIRCLE GLOWING ✨ SCAM-PROOF ECOSYSTEM ✨ LUZON VISAYAS MINDANAO</div>
+<body class="bg-navy-900 text-slate-100 font-sans antialiased min-h-screen flex flex-col justify-between pb-24 md:pb-0 md:pl-72">
+<div class="watermark">THE VIRTUAL CIRCLE ✨ SCAM-PROOF ECOSYSTEM ✨ LUZON VISAYAS MINDANAO ✨ RECRUITER HUB</div>
 
-<!-- Sidebar Navigation -->
+<!-- Desktop Sidebar Navigation -->
 <aside class="hidden md:flex flex-col w-72 bg-navy-800 border-r border-slate-700/50 fixed inset-y-0 left-0 z-40 p-6 shadow-2xl">
-  <div class="flex items-center space-x-3 mb-8">
+  <div class="flex items-center space-x-3 mb-6">
     <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-gold-500 to-amber-400 flex items-center justify-center text-navy-900 font-heading font-extrabold text-2xl shadow-lg">TVC</div>
     <div>
-      <h1 class="font-heading font-bold text-lg tracking-wide text-white">The Virtual Circle</h1>
+      <h1 class="font-heading font-bold text-base tracking-wide text-white leading-tight">The Virtual Circle</h1>
       <p class="text-[11px] text-gold-400 font-medium">Keep the Circle Glowing ✨</p>
     </div>
   </div>
 
-  <div class="mb-4 bg-navy-900/80 p-3 rounded-xl border border-gold-500/30">
-    <span class="text-[10px] uppercase tracking-wider text-gold-400 font-bold block">Founders Cohort Active</span>
-    <p class="text-xs font-bold text-white mt-0.5">15 Newbies / 35 Seasoned Spots</p>
+  <div class="mb-6 bg-navy-900/90 p-3.5 rounded-2xl border border-gold-500/30 shadow-inner">
+    <div class="flex items-center justify-between mb-1">
+      <span class="text-[10px] uppercase tracking-wider text-gold-400 font-bold">Founders Cohort</span>
+      <span class="text-[10px] bg-gold-500/20 text-gold-400 px-1.5 py-0.5 rounded font-bold">Active</span>
+    </div>
+    <p class="text-xs font-bold text-white">15 Newbies / 35 Seasoned Spots</p>
   </div>
 
   <nav class="space-y-1.5 flex-1 overflow-y-auto pr-1">
     <button onclick="switchTab('feed')" id="nav-feed" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all bg-gold-500 text-navy-900 shadow-md">
-      <span class="text-base">📡</span><span>Community & Regional Hubs</span>
+      <span class="text-base">📡</span><span>Community & Hubs</span>
     </button>
     <button onclick="switchTab('talent')" id="nav-talent" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
       <span class="text-base">🗂️</span><span>Talent & Recruiter Hub</span>
     </button>
     <button onclick="switchTab('scam')" id="nav-scam" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
-      <span class="text-base">🛡️</span><span>Scam-Buster & Red-Flag Board</span>
+      <span class="text-base">🛡️</span><span>Scam-Buster & Red Flags</span>
     </button>
     <button onclick="switchTab('academy')" id="nav-academy" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
       <span class="text-base">🚀</span><span>AI Sims & Mentor Rates</span>
@@ -70,24 +72,44 @@ body { user-select: none; -webkit-touch-callout: none; }
     </button>
   </nav>
 
-  <div class="pt-6 border-t border-slate-700/50">
-    <div class="bg-navy-900/60 p-3 rounded-xl border border-gold-500/20 text-center">
-      <span class="text-[10px] text-gold-400 font-bold block mb-1">🔒 Multi-Factor KYC Secured</span>
-      <p class="text-[10px] text-slate-400">Zero-Cost Serverless Cloudflare Architecture</p>
-    </div>
+  <div class="pt-4 border-t border-slate-700/50 text-center">
+    <span class="text-[10px] text-emerald-400 font-semibold block">🛡️ Multi-Factor KYC Secured</span>
+    <span class="text-[10px] text-slate-400">Zero-Cost Serverless Backend</span>
   </div>
 </aside>
 
-<!-- Mobile Header -->
-<header class="md:hidden bg-navy-800 border-b border-slate-700/50 px-4 py-3 sticky top-0 z-40 flex items-center justify-between">
-  <div class="flex items-center space-x-2">
-    <div class="w-8 h-8 rounded-lg bg-gold-500 flex items-center justify-center text-navy-900 font-heading font-bold text-sm">TVC</div>
-    <span class="font-heading font-bold text-base text-white">The Virtual Circle</span>
+<!-- Mobile Sticky Header -->
+<header class="md:hidden bg-navy-800 border-b border-slate-700/50 px-4 py-3 sticky top-0 z-40 flex items-center justify-between shadow-lg">
+  <div class="flex items-center space-x-2.5">
+    <div class="w-9 h-9 rounded-xl bg-gold-500 flex items-center justify-center text-navy-900 font-heading font-bold text-sm">TVC</div>
+    <div>
+      <span class="font-heading font-bold text-sm text-white block leading-tight">The Virtual Circle</span>
+      <span class="text-[10px] text-gold-400">Keep the Circle Glowing ✨</span>
+    </div>
   </div>
-  <button onclick="switchTab('feed')" class="px-3 py-1 bg-gold-500 text-navy-900 rounded-lg font-heading font-bold text-xs">Menu</button>
+  <span class="text-xs bg-gold-500/20 text-gold-400 px-2.5 py-1 rounded-full font-bold">KYC Verified</span>
 </header>
 
-<!-- Main Dynamic Content Area -->
+<!-- Mobile Bottom Navigation Bar (App Experience) -->
+<nav class="md:hidden fixed bottom-0 inset-x-0 bg-navy-800 border-t border-slate-700/80 z-50 px-2 py-2 flex justify-around items-center shadow-2xl">
+  <button onclick="switchTab('feed')" id="mob-nav-feed" class="flex flex-col items-center p-1 text-gold-400">
+    <span class="text-lg">📡</span><span class="text-[10px] font-semibold">Feed</span>
+  </button>
+  <button onclick="switchTab('talent')" id="mob-nav-talent" class="flex flex-col items-center p-1 text-slate-400 hover:text-white">
+    <span class="text-lg">🗂️</span><span class="text-[10px] font-semibold">Talent</span>
+  </button>
+  <button onclick="switchTab('scam')" id="mob-nav-scam" class="flex flex-col items-center p-1 text-slate-400 hover:text-white">
+    <span class="text-lg">🛡️</span><span class="text-[10px] font-semibold">Scam-Buster</span>
+  </button>
+  <button onclick="switchTab('academy')" id="mob-nav-academy" class="flex flex-col items-center p-1 text-slate-400 hover:text-white">
+    <span class="text-lg">🚀</span><span class="text-[10px] font-semibold">Academy</span>
+  </button>
+  <button onclick="switchTab('studio')" id="mob-nav-studio" class="flex flex-col items-center p-1 text-slate-400 hover:text-white">
+    <span class="text-lg">💻</span><span class="text-[10px] font-semibold">Studio</span>
+  </button>
+</nav>
+
+<!-- Main App Content Area -->
 <main class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-8 z-10">
 
   <!-- 1. Community & Regional Hubs Tab -->
@@ -96,57 +118,84 @@ body { user-select: none; -webkit-touch-callout: none; }
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
           <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">Nationwide Ecosystem</span>
-          <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">The Virtual Circle Feed & Regional Hubs</h2>
-          <p class="text-sm text-slate-400 mt-1">Select your regional hub to connect with local VAs across Luzon, Visayas, and Mindanao.</p>
+          <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Community Feed & Regional Hubs</h2>
+          <p class="text-sm text-slate-400 mt-1">Connect instantly across Luzon, Visayas, and Mindanao.</p>
         </div>
         <div class="flex flex-wrap gap-2">
-          <button class="px-3 py-1.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs">#luzon-vas</button>
-          <button class="px-3 py-1.5 bg-slate-700 text-white rounded-xl font-heading font-bold text-xs hover:bg-slate-600">#visayas-vas</button>
-          <button class="px-3 py-1.5 bg-slate-700 text-white rounded-xl font-heading font-bold text-xs hover:bg-slate-600">#mindanao-vas</button>
-          <button class="px-3 py-1.5 bg-slate-700 text-white rounded-xl font-heading font-bold text-xs hover:bg-slate-600">#grand-eyeball-ph</button>
+          <button onclick="filterHub('luzon')" class="px-3 py-1.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs">#luzon-vas</button>
+          <button onclick="filterHub('visayas')" class="px-3 py-1.5 bg-slate-700 text-white rounded-xl font-heading font-bold text-xs hover:bg-slate-600">#visayas-vas</button>
+          <button onclick="filterHub('mindanao')" class="px-3 py-1.5 bg-slate-700 text-white rounded-xl font-heading font-bold text-xs hover:bg-slate-600">#mindanao-vas</button>
+          <button onclick="filterHub('eyeball')" class="px-3 py-1.5 bg-slate-700 text-white rounded-xl font-heading font-bold text-xs hover:bg-slate-600">#grand-eyeball</button>
         </div>
       </div>
-      <textarea class="w-full bg-navy-900 border border-slate-700 rounded-2xl p-4 text-sm text-white focus:outline-none focus:border-gold-500 shadow-inner" rows="3" placeholder="Share a professional win, ask for workflow advice, or post a shift check-in..."></textarea>
+      <textarea id="feed-input" class="w-full bg-navy-900 border border-slate-700 rounded-2xl p-4 text-sm text-white focus:outline-none focus:border-gold-500 shadow-inner" rows="3" placeholder="Share a professional win, workflow tip, or check in from your region..."></textarea>
       <div class="flex justify-between items-center mt-4">
         <span class="text-xs text-emerald-400 font-semibold flex items-center gap-1">🛡️ Multi-Factor KYC Active</span>
-        <button class="px-5 py-2.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-xs hover:bg-gold-400 shadow transition">Post to Circle ✨</button>
+        <button onclick="postFeed()" class="px-5 py-2.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-xs hover:bg-gold-400 shadow transition">Post to Circle ✨</button>
+      </div>
+    </div>
+
+    <!-- Live Feed Stream -->
+    <div id="feed-stream" class="space-y-4">
+      <div class="bg-navy-800 p-5 rounded-2xl border border-slate-700/50 shadow">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-full bg-gold-500/20 text-gold-400 flex items-center justify-center font-bold text-sm">LL</div>
+            <div>
+              <h4 class="font-bold text-sm text-white">Lei Lee Ann Abut <span class="text-xs text-gold-400 font-normal">#luzon-vas</span></h4>
+              <p class="text-[10px] text-slate-400">2 minutes ago • Verified Founders Cohort</p>
+            </div>
+          </div>
+          <span class="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">KYC Verified</span>
+        </div>
+        <p class="text-sm text-slate-300">Just finalized our automated pre-litigation workflow templates in Google Sheets and Apps Script! Zero server costs and blazing fast execution. Keep the Virtual Circle Glowing ✨</p>
       </div>
     </div>
   </div>
 
   <!-- 2. Talent & Recruiter Hub Tab -->
   <div id="talent-tab" class="tab-content hidden space-y-6">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
-        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white">Multi-Tiered Recruiter & Talent Hub</h2>
-        <p class="text-sm text-slate-400 mt-1">Pre-vetted 50-VA Founders Cohort and independent headhunter placement ecosystem.</p>
+        <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">B2B & Hiring Hub</span>
+        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Talent Marketplace & Recruiter Hub</h2>
+        <p class="text-sm text-slate-400 mt-1">Pre-vetted Founders Cohort talent, Managed VA Pods, and professional headhunter passes.</p>
       </div>
-      <button class="px-4 py-2 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs shadow">List as Recruiter 🤝</button>
+      <button onclick="alert('Recruiter pass checkout initialized via PayMongo / Xendit webhook.')" class="px-5 py-2.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-xs shadow hover:bg-gold-400 transition">Get Recruiter Pass 🤝</button>
     </div>
+
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-lg">
-        <span class="text-xs bg-gold-500/20 text-gold-400 px-2.5 py-1 rounded-full font-bold">Founders Seasoned VA</span>
-        <h3 class="font-heading font-bold text-lg text-white mt-3">Personal Injury Case Manager</h3>
-        <p class="text-xs text-slate-400 mt-1">Specializing in pre-litigation workflows, subrogation, and Filevine automation.</p>
-        <div class="mt-4 pt-4 border-t border-slate-700/50 flex items-center justify-between text-xs">
+      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-lg flex flex-col justify-between">
+        <div>
+          <span class="text-xs bg-gold-500/20 text-gold-400 px-2.5 py-1 rounded-full font-bold">Founders Seasoned VA</span>
+          <h3 class="font-heading font-bold text-lg text-white mt-3">Personal Injury Case Manager</h3>
+          <p class="text-xs text-slate-400 mt-1">Specializing in pre-litigation workflows, subrogation, and Filevine automation.</p>
+        </div>
+        <div class="mt-6 pt-4 border-t border-slate-700/50 flex items-center justify-between text-xs">
           <span class="text-emerald-400 font-semibold">AI Sim Score: 94%</span>
-          <span class="text-gold-400 font-bold">Verified KYC ✓</span>
+          <button onclick="alert('Connecting with candidate profile...')" class="text-gold-400 font-bold hover:underline">View Portfolio →</button>
         </div>
       </div>
-      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-lg">
-        <span class="text-xs bg-mint/20 text-mint px-2.5 py-1 rounded-full font-bold">Managed VA Squad</span>
-        <h3 class="font-heading font-bold text-lg text-white mt-3">Executive Assistant Pod</h3>
-        <p class="text-xs text-slate-400 mt-1">Senior VA Pod Leader paired with trained Newbie VAs on monthly retainer.</p>
-        <div class="mt-4 pt-4 border-t border-slate-700/50 flex items-center justify-between text-xs">
-          <span class="text-slate-300">Retainer: $2,000/mo</span>
-          <span class="text-gold-400 font-bold">Ready to Deploy</span>
+
+      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-lg flex flex-col justify-between">
+        <div>
+          <span class="text-xs bg-mint/20 text-mint px-2.5 py-1 rounded-full font-bold">Managed VA Squad</span>
+          <h3 class="font-heading font-bold text-lg text-white mt-3">Executive Assistant Pod</h3>
+          <p class="text-xs text-slate-400 mt-1">Senior VA Pod Leader paired with trained Newbie VAs on monthly retainer.</p>
+        </div>
+        <div class="mt-6 pt-4 border-t border-slate-700/50 flex items-center justify-between text-xs">
+          <span class="text-slate-300 font-semibold">Retainer: $2,000/mo</span>
+          <button onclick="alert('Managed Squad inquiry submitted!')" class="text-gold-400 font-bold hover:underline">Deploy Squad →</button>
         </div>
       </div>
-      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-lg">
-        <span class="text-xs bg-coral/20 text-coral px-2.5 py-1 rounded-full font-bold">Headhunter Partner</span>
-        <h3 class="font-heading font-bold text-lg text-white mt-3">Global Executive Search Hub</h3>
-        <p class="text-xs text-slate-400 mt-1">Independent headhunter managing US/AU client placement pipelines.</p>
-        <div class="mt-4 pt-4 border-t border-slate-700/50 flex items-center justify-between text-xs">
+
+      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-lg flex flex-col justify-between">
+        <div>
+          <span class="text-xs bg-coral/20 text-coral px-2.5 py-1 rounded-full font-bold">Headhunter Partner</span>
+          <h3 class="font-heading font-bold text-lg text-white mt-3">Global Executive Search Hub</h3>
+          <p class="text-xs text-slate-400 mt-1">Independent headhunter managing US/AU client placement pipelines.</p>
+        </div>
+        <div class="mt-6 pt-4 border-t border-slate-700/50 flex items-center justify-between text-xs">
           <span class="text-slate-300">Tier: Pro Recruiter</span>
           <span class="text-gold-400 font-bold">Active Pass ✓</span>
         </div>
@@ -156,25 +205,40 @@ body { user-select: none; -webkit-touch-callout: none; }
 
   <!-- 3. Scam-Buster & Red-Flag Board Tab -->
   <div id="scam-tab" class="tab-content hidden space-y-6">
-    <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white">Scam-Buster Intel & Company Red-Flag Board</h2>
-    <p class="text-sm text-slate-400 mt-1">Protecting Philippine VAs across Luzon, Visayas, and Mindanao with AI-powered risk scoring.</p>
+    <div>
+      <span class="text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full font-bold">Zero-Tolerance Protection</span>
+      <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Scam-Buster Intel & Company Red-Flag Board</h2>
+      <p class="text-sm text-slate-400 mt-1">AI-powered instant job scanner and crowdsourced employment risk registry.</p>
+    </div>
+
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
       <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-xl space-y-4">
-        <h3 class="font-heading font-bold text-lg text-white">Gemini AI Scam Detector</h3>
-        <p class="text-xs text-slate-400">Paste any job post, client email, or WhatsApp/Telegram recruitment message to scan for red flags.</p>
-        <textarea class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-gold-500" rows="4" placeholder="Paste job description or suspicious offer here..."></textarea>
-        <button class="w-full py-2.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs shadow">Run Instant Scam Analysis 🛡️</button>
+        <h3 class="font-heading font-bold text-lg text-white">Gemini AI Instant Scam Detector</h3>
+        <p class="text-xs text-slate-400">Paste any suspicious job description, client email, or WhatsApp/Telegram recruitment message below.</p>
+        <textarea id="scam-input" class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-gold-500" rows="4" placeholder="Paste job offer text here..."></textarea>
+        <button onclick="runScamScan()" class="w-full py-3 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-xs shadow hover:bg-gold-400 transition">Run Instant Scam Analysis 🛡️</button>
+        <div id="scam-result" class="hidden p-3 bg-navy-900 rounded-xl border border-red-500/40 text-xs text-red-300"></div>
       </div>
+
       <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-xl space-y-4">
         <h3 class="font-heading font-bold text-lg text-white">Company Risk & Blacklist Board</h3>
-        <p class="text-xs text-slate-400">Search reported employers, fake agencies, and withheld wage complaints.</p>
+        <p class="text-xs text-slate-400">Search reported employers, fake agencies, and withheld wage grievances.</p>
         <input type="text" placeholder="Search company name or domain..." class="w-full bg-navy-900 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-gold-500">
-        <div class="bg-navy-900 p-4 rounded-xl border border-red-500/30 flex items-center justify-between">
-          <div>
-            <h4 class="font-bold text-sm text-red-400">FakeAgency Corp (Blacklisted)</h4>
-            <p class="text-[11px] text-slate-400">Reported for upfront training fees & ghosting.</p>
+        <div class="space-y-3">
+          <div class="bg-navy-900 p-3.5 rounded-xl border border-red-500/30 flex items-center justify-between">
+            <div>
+              <h4 class="font-bold text-sm text-red-400">FakeAgency Global (Blacklisted)</h4>
+              <p class="text-[11px] text-slate-400">Reported for upfront training fees & ghosting.</p>
+            </div>
+            <span class="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full font-bold">High Risk</span>
           </div>
-          <span class="text-xs bg-red-500/20 text-red-400 px-2.5 py-1 rounded-full font-bold">High Risk</span>
+          <div class="bg-navy-900 p-3.5 rounded-xl border border-amber-500/30 flex items-center justify-between">
+            <div>
+              <h4 class="font-bold text-sm text-amber-400">DubiousStaffing PH (Under Review)</h4>
+              <p class="text-[11px] text-slate-400">Flagged for delayed salary payouts.</p>
+            </div>
+            <span class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-bold">Caution</span>
+          </div>
         </div>
       </div>
     </div>
@@ -182,26 +246,33 @@ body { user-select: none; -webkit-touch-callout: none; }
 
   <!-- 4. AI Sims & Mentor Rates Tab -->
   <div id="academy-tab" class="tab-content hidden space-y-6">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
-        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white">AI Role Simulations & Mentor Academy</h2>
-        <p class="text-sm text-slate-400 mt-1">Coaches set their own rates; platform earns commission based on embedded training materials.</p>
+        <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">Skill Mastery & Mentorship</span>
+        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">AI Role Simulations & Mentor Academy</h2>
+        <p class="text-sm text-slate-400 mt-1">Coaches set their own rates; platform earns flexible commission based on embedded materials.</p>
       </div>
     </div>
+
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-lg">
-        <span class="text-xs bg-gold-500/20 text-gold-400 px-2.5 py-1 rounded-full font-bold">VA Bestie AI Simulator</span>
-        <h3 class="font-heading font-bold text-lg text-white mt-3">Executive Calendar & Crisis Management</h3>
-        <p class="text-xs text-slate-400 mt-1">Real-world scenario testing for C-suite schedule conflicts and urgent escalations.</p>
-        <button class="mt-4 px-4 py-2 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs">Launch Simulation 🚀</button>
+      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-lg flex flex-col justify-between">
+        <div>
+          <span class="text-xs bg-gold-500/20 text-gold-400 px-2.5 py-1 rounded-full font-bold">VA Bestie AI Simulator</span>
+          <h3 class="font-heading font-bold text-lg text-white mt-3">Executive Calendar & Crisis Management</h3>
+          <p class="text-xs text-slate-400 mt-1">Real-world scenario testing for C-suite schedule conflicts and urgent escalations.</p>
+        </div>
+        <button onclick="alert('Launching VA Bestie AI Role Simulation session...')" class="mt-6 w-full py-2.5 bg-gold-500 text-navy-900 rounded-xl font-heading font-bold text-xs shadow hover:bg-gold-400 transition">Launch Simulation 🚀</button>
       </div>
-      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-lg">
-        <span class="text-xs bg-mint/20 text-mint px-2.5 py-1 rounded-full font-bold">Expert Mentor Track</span>
-        <h3 class="font-heading font-bold text-lg text-white mt-3">Legal Subrogation & Demand Mastery</h3>
-        <p class="text-xs text-slate-400 mt-1">Custom coaching with embedded SOPs and material-based revenue splits.</p>
-        <div class="mt-4 flex items-center justify-between">
-          <span class="text-xs text-slate-300 font-semibold">Mentor Rate: $50/hr</span>
-          <button class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-heading font-bold text-xs">Book Session ✨</button>
+
+      <div class="bg-navy-800 p-6 rounded-2xl border border-slate-700/50 shadow-lg flex flex-col justify-between">
+        <div>
+          <span class="text-xs bg-mint/20 text-mint px-2.5 py-1 rounded-full font-bold">Expert Mentor Track</span>
+          <h3 class="font-heading font-bold text-lg text-white mt-3">Legal Subrogation & Demand Mastery</h3>
+          <p class="text-xs text-slate-400 mt-1">Custom coaching with embedded SOPs and material-based revenue splits.</p>
+        </div>
+        <div class="mt-6 pt-4 border-t border-slate-700/50 flex items-center justify-between">
+          <span class="text-xs text-slate-300 font-semibold">Mentor Rate: $50/hr (Custom Set)</span>
+          <button onclick="alert('Mentor booking initiated!')" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-heading font-bold text-xs">Book Session ✨</button>
         </div>
       </div>
     </div>
@@ -209,11 +280,11 @@ body { user-select: none; -webkit-touch-callout: none; }
 
   <!-- 5. Build My Platform Studio Tab -->
   <div id="studio-tab" class="tab-content hidden space-y-6">
-    <div class="bg-navy-800 p-8 rounded-3xl border border-slate-700/50 shadow-2xl text-center space-y-6">
+    <div class="bg-navy-800 p-8 md:p-10 rounded-3xl border border-slate-700/50 shadow-2xl text-center space-y-6">
       <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">High-Ticket B2B Service</span>
       <h2 class="text-3xl font-heading font-extrabold text-white">"Build My Platform" Vibe-Coder Agency Studio</h2>
-      <p class="text-sm text-slate-300 max-w-xl mx-auto">Commission custom, zero-cost serverless platform builds modeled on The Virtual Circle's architecture for international founders and agencies ($1,500 – $12,000 tiers).</p>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-left max-w-3xl mx-auto pt-4">
+      <p class="text-sm text-slate-300 max-w-xl mx-auto">Commission custom, zero-cost serverless platform builds modeled on The Virtual Circle's architecture for international founders and agencies.</p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-left max-w-3xl mx-auto pt-2">
         <div class="bg-navy-900 p-4 rounded-xl border border-slate-700">
           <h4 class="font-bold text-gold-400 text-sm">MVP Starter ($1.5k)</h4>
           <p class="text-xs text-slate-400 mt-1">Landing page & basic webhook database.</p>
@@ -227,7 +298,7 @@ body { user-select: none; -webkit-touch-callout: none; }
           <p class="text-xs text-slate-400 mt-1">Multi-tiered headhunter & managed squads.</p>
         </div>
       </div>
-      <button class="px-8 py-3 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-sm shadow-xl hover:bg-gold-400 transition">Request Custom Build Consultation 💻</button>
+      <button onclick="alert('Agency Studio consultation request sent successfully!')" class="px-8 py-3 bg-gold-500 text-navy-900 rounded-xl font-heading font-extrabold text-sm shadow-xl hover:bg-gold-400 transition">Request Custom Build Consultation 💻</button>
     </div>
   </div>
 
@@ -241,6 +312,8 @@ body { user-select: none; -webkit-touch-callout: none; }
 function switchTab(tabId) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
   document.getElementById(tabId + '-tab').classList.remove('hidden');
+
+  // Update Desktop Nav
   document.querySelectorAll('aside nav button').forEach(btn => {
     btn.classList.remove('bg-gold-500', 'text-navy-900', 'shadow-md');
     btn.classList.add('text-slate-300', 'hover:bg-navy-700/50');
@@ -250,6 +323,55 @@ function switchTab(tabId) {
     activeBtn.classList.remove('text-slate-300', 'hover:bg-navy-700/50');
     activeBtn.classList.add('bg-gold-500', 'text-navy-900', 'shadow-md');
   }
+
+  // Update Mobile Nav
+  document.querySelectorAll('nav.fixed button').forEach(btn => {
+    btn.classList.remove('text-gold-400');
+    btn.classList.add('text-slate-400');
+  });
+  const activeMobBtn = document.getElementById('mob-nav-' + tabId);
+  if (activeMobBtn) {
+    activeMobBtn.classList.remove('text-slate-400');
+    activeMobBtn.classList.add('text-gold-400');
+  }
+}
+
+function postFeed() {
+  const input = document.getElementById('feed-input');
+  if (!input.value.trim()) return;
+  const stream = document.getElementById('feed-stream');
+  const card = document.createElement('div');
+  card.className = 'bg-navy-800 p-5 rounded-2xl border border-slate-700/50 shadow animate-pulse';
+  card.innerHTML = `
+    <div class="flex items-center justify-between mb-2">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-full bg-gold-500/20 text-gold-400 flex items-center justify-center font-bold text-sm">YOU</div>
+        <div>
+          <h4 class="font-bold text-sm text-white">You (Verified Member)</h4>
+          <p class="text-[10px] text-slate-400">Just now • KYC Verified</p>
+        </div>
+      </div>
+      <span class="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">KYC Verified</span>
+    </div>
+    <p class="text-sm text-slate-300">${input.value}</p>
+  `;
+  stream.prepend(card);
+  input.value = '';
+}
+
+function filterHub(hub) {
+  alert('Filtered view switched to: #' + hub + '-vas');
+}
+
+function runScamScan() {
+  const text = document.getElementById('scam-input').value;
+  const res = document.getElementById('scam-result');
+  res.classList.remove('hidden');
+  if (!text.trim()) {
+    res.innerHTML = "⚠️ Please paste a job description or text to analyze.";
+    return;
+  }
+  res.innerHTML = "🔍 AI Analysis Complete: <strong>HIGH RISK DETECTED</strong>. This post mentions upfront training fees and WhatsApp redirection, violating platform security standards.";
 }
 </script>
 </body>

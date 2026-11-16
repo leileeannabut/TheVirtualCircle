@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The Virtual Circle — Enterprise Sourcing & Scraping Ecosystem</title>
+<title>The Virtual Circle — Your Sanctuary & Remote Ecosystem</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script>
@@ -11,8 +11,9 @@ tailwind.config = {
   theme: {
     extend: {
       colors: {
-        navy: { 950: '#070D1D', 900: '#0F172A', 800: '#1E293B', 700: '#334155' },
-        gold: { 500: '#EAB308', 600: '#CA8A04', 400: '#FACC15', 300: '#FEF08A' },
+        sanctuary: { 950: '#070D1B', 900: '#0C162D', 800: '#152345', 700: '#223666' },
+        glow: { 500: '#F59E0B', 400: '#FBBF24', 300: '#FDE68A' },
+        mintglow: { 400: '#2DD4BF', 500: '#14B8A6' }
       },
       fontFamily: {
         sans: ['"Plus Jakarta Sans"', 'sans-serif'],
@@ -22,341 +23,251 @@ tailwind.config = {
   }
 }
 </script>
+<style>
+.sanctuary-bg {
+  background: radial-gradient(circle at top right, #152345 0%, #0C162D 40%, #070D1B 100%);
+}
+.glow-card {
+  background: linear-gradient(135deg, rgba(21, 35, 69, 0.7) 0%, rgba(12, 22, 45, 0.9) 100%);
+  backdrop-filter: blur(12px);
+}
+</style>
 </head>
-<body class="bg-navy-950 text-slate-100 font-sans antialiased min-h-screen flex flex-col selection:bg-gold-500 selection:text-navy-950">
+<body class="sanctuary-bg text-slate-100 font-sans antialiased min-h-screen flex flex-col selection:bg-glow-500 selection:text-sanctuary-950">
 
-<!-- Executive Top Header -->
-<header class="bg-navy-900 border-b border-slate-800 sticky top-0 z-50 px-6 py-4 flex items-center justify-between shadow-2xl">
-  <div class="flex items-center space-x-4">
-    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-gold-500 to-amber-400 flex items-center justify-center text-navy-950 font-heading font-extrabold text-xl shadow-lg">TVC</div>
+<!-- Sanctuary Header -->
+<header class="bg-sanctuary-900/80 backdrop-blur-md border-b border-white/10 sticky top-0 z-50 px-6 py-4 flex items-center justify-between shadow-2xl">
+  <div class="flex items-center space-x-3.5">
+    <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-glow-500 to-amber-300 flex items-center justify-center text-sanctuary-950 font-heading font-extrabold text-xl shadow-lg shadow-glow-500/20">✨</div>
     <div>
-      <div class="flex items-center space-x-2">
-        <h1 class="font-heading font-extrabold text-lg tracking-wide text-white">The Virtual Circle</h1>
-        <span class="text-[10px] bg-gold-500/10 text-gold-400 border border-gold-500/30 px-2 py-0.5 rounded-full font-bold">Enterprise Scraper v3.0</span>
-      </div>
-      <p class="text-[11px] text-slate-400">Keep the Virtual Circle Glowing ✨ • Zero-Cost Serverless Architecture</p>
+      <h1 class="font-heading font-extrabold text-base tracking-wide text-white">The Virtual Circle</h1>
+      <p class="text-[11px] text-glow-300 font-medium">Keep the Virtual Circle Glowing 🌙 • Your Remote Sanctuary</p>
     </div>
   </div>
   <div class="hidden md:flex items-center space-x-3">
-    <div class="bg-navy-800 px-3 py-1.5 rounded-xl border border-slate-700 text-xs">
-      <span class="text-slate-400">Founders Cohort Slots:</span> <strong class="text-gold-400">15 Newbies / 35 Seasoned</strong>
-    </div>
-    <div class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5">
-      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Scraper Engine Active
-    </div>
+    <span class="text-xs bg-sanctuary-800 text-slate-300 px-3.5 py-1.5 rounded-2xl border border-white/10">Founders Cohort: <strong class="text-glow-400">15 Newbies / 35 Seasoned</strong></span>
+    <span class="text-xs bg-emerald-500/10 text-emerald-400 px-3 py-1.5 rounded-2xl border border-emerald-500/30 flex items-center gap-1.5 font-semibold">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> KYC Sanctuary Secure
+    </span>
   </div>
 </header>
 
-<!-- Main Container -->
-<div class="flex-1 flex flex-col md:flex-row max-w-[1700px] w-full mx-auto p-4 md:p-8 gap-8">
+<!-- Main Sanctuary Container -->
+<main class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-8 space-y-8">
 
-  <!-- Sidebar Navigation -->
-  <aside class="w-full md:w-72 space-y-2 shrink-0">
-    <div class="text-[10px] uppercase tracking-wider text-slate-500 font-bold px-3 mb-2">Operations Terminals</div>
-    <button onclick="switchTab('scraper')" id="nav-scraper" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl font-heading font-semibold text-sm transition-all bg-gold-500 text-navy-950 shadow-lg shadow-gold-500/10">
-      <span class="text-base">🕷️</span><span>Job & Talent Scraper</span>
-    </button>
-    <button onclick="switchTab('sourcing')" id="nav-sourcing" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl font-heading font-semibold text-sm transition-all text-slate-300 bg-navy-900 border border-slate-800 hover:border-slate-700">
-      <span class="text-base">🎯</span><span>Talent Sourcing & Matching</span>
-    </button>
-    <button onclick="switchTab('pipeline')" id="nav-pipeline" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl font-heading font-semibold text-sm transition-all text-slate-300 bg-navy-900 border border-slate-800 hover:border-slate-700">
-      <span class="text-base">📊</span><span>Recruiter Pipeline Kanban</span>
-    </button>
-    <button onclick="switchTab('mentor')" id="nav-mentor" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl font-heading font-semibold text-sm transition-all text-slate-300 bg-navy-900 border border-slate-800 hover:border-slate-700">
-      <span class="text-base">👩‍🏫</span><span>Mentor Rates & SOP Splits</span>
-    </button>
-    <button onclick="switchTab('scam')" id="nav-scam" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl font-heading font-semibold text-sm transition-all text-slate-300 bg-navy-900 border border-slate-800 hover:border-slate-700">
-      <span class="text-base">🛡️</span><span>AI Scam-Buster & Blacklists</span>
-    </button>
-  </aside>
+  <!-- Sanctuary Navigation Tabs -->
+  <div class="flex flex-wrap gap-2.5 bg-sanctuary-900/50 p-2 rounded-3xl border border-white/10 backdrop-blur-md">
+    <button onclick="switchTab('sanctuary')" id="btn-sanctuary" class="px-5 py-2.5 bg-glow-500 text-sanctuary-950 rounded-2xl font-heading font-bold text-xs shadow-lg shadow-glow-500/20 transition-all"> Sanctuary Feed</button>
+    <button onclick="switchTab('matching')" id="btn-matching" class="px-5 py-2.5 bg-sanctuary-800/80 text-slate-300 rounded-2xl font-heading font-bold text-xs hover:text-white hover:bg-sanctuary-700 transition-all border border-white/5">🎯 Client Matching</button>
+    <button onclick="switchTab('mentor')" id="btn-mentor" class="px-5 py-2.5 bg-sanctuary-800/80 text-slate-300 rounded-2xl font-heading font-bold text-xs hover:text-white hover:bg-sanctuary-700 transition-all border border-white/5">👩‍🏫 Mentor & SOP Portal</button>
+    <button onclick="switchTab('scam')" id="btn-scam" class="px-5 py-2.5 bg-sanctuary-800/80 text-slate-300 rounded-2xl font-heading font-bold text-xs hover:text-white hover:bg-sanctuary-700 transition-all border border-white/5">🛡️ Scam-Buster & Shield</button>
+    <button onclick="switchTab('recruiter')" id="btn-recruiter" class="px-5 py-2.5 bg-sanctuary-800/80 text-slate-300 rounded-2xl font-heading font-bold text-xs hover:text-white hover:bg-sanctuary-700 transition-all border border-white/5">🤝 Recruiter Hub</button>
+  </div>
 
-  <!-- Dynamic Content Area -->
-  <main class="flex-1 space-y-6">
-
-    <!-- 1. Job & Talent Scraper Terminal -->
-    <div id="scraper-tab" class="tab-content space-y-6">
-      <div class="bg-navy-900 p-8 rounded-3xl border border-slate-800 shadow-2xl space-y-6">
+  <!-- Tab 1: Sanctuary Feed & Regional Hubs -->
+  <div id="tab-sanctuary" class="tab-content space-y-6">
+    <div class="glow-card p-8 rounded-3xl border border-white/10 shadow-2xl space-y-6">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">Automated Data Ingestion</span>
-          <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Live Job & Profile Scraping Terminal</h2>
-          <p class="text-sm text-slate-400 mt-1">Extract, parse, and ingest job postings or candidate profiles from LinkedIn, OnlineJobs.ph, or Upwork into the ecosystem database.</p>
+          <span class="text-xs bg-glow-500/10 text-glow-300 border border-glow-500/30 px-3 py-1 rounded-full font-bold">Graveyard Shift Tambayan</span>
+          <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Welcome to Your Safe Space ✨</h2>
+          <p class="text-sm text-slate-300 mt-1">Connect with fellow Filipino VAs across Luzon, Visayas, and Mindanao without fear of scams or judgment.</p>
         </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div class="md:col-span-2">
-            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Target URL to Scrape</label>
-            <input type="url" id="scrape-url" class="w-full bg-navy-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-gold-500" placeholder="https://www.onlinejobs.ph/jobseekers/job/...">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Source Platform</label>
-            <select id="scrape-source" class="w-full bg-navy-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-gold-500">
-              <option>OnlineJobs.ph</option>
-              <option>LinkedIn Jobs</option>
-              <option>Upwork Client Posting</option>
-              <option>Custom URL Parser</option>
-            </select>
-          </div>
+        <div class="flex gap-2">
+          <span class="px-3 py-1.5 bg-glow-500 text-sanctuary-950 font-bold text-xs rounded-xl shadow">#luzon-vas</span>
+          <span class="px-3 py-1.5 bg-sanctuary-800 text-slate-300 font-bold text-xs rounded-xl border border-white/10">#visayas-vas</span>
+          <span class="px-3 py-1.5 bg-sanctuary-800 text-slate-300 font-bold text-xs rounded-xl border border-white/10">#mindanao-vas</span>
         </div>
-
-        <button onclick="executeScraper()" class="w-full py-3 bg-gold-500 text-navy-950 rounded-xl font-heading font-extrabold text-xs shadow-lg hover:bg-gold-400 transition">Execute Scraper & Ingest Data 🕷️</button>
-
-        <div id="scrape-results-container" class="hidden space-y-4 pt-4 border-t border-slate-800">
-          <div class="flex justify-between items-center">
-            <h4 class="font-heading font-bold text-sm text-white">Scraped Data Output & Parsed Fields:</h4>
-            <span class="text-xs text-emerald-400 font-semibold">Status: Successfully Ingested ✓</span>
-          </div>
-          <div id="scrape-output-box" class="bg-navy-950 p-5 rounded-2xl border border-slate-800 font-mono text-xs text-slate-300 space-y-2"></div>
-        </div>
+      </div>
+      <textarea id="sanctuary-input" class="w-full bg-sanctuary-950/80 border border-white/10 rounded-2xl p-4 text-sm text-white focus:outline-none focus:border-glow-500 shadow-inner" rows="3" placeholder="Share a midnight win, a shift confession, or ask the circle for workflow advice..."></textarea>
+      <div class="flex justify-between items-center">
+        <span class="text-xs text-mintglow-400 font-semibold flex items-center gap-1.5">🛡️ Multi-Factor KYC Verified Session</span>
+        <button onclick="postSanctuary()" class="px-6 py-2.5 bg-glow-500 text-sanctuary-950 rounded-xl font-heading font-extrabold text-xs shadow-lg hover:bg-glow-400 transition">Share to Sanctuary ✨</button>
       </div>
     </div>
 
-    <!-- 2. Talent Sourcing & Matching Terminal -->
-    <div id="sourcing-tab" class="tab-content hidden space-y-6">
-      <div class="bg-navy-900 p-8 rounded-3xl border border-slate-800 shadow-2xl space-y-6">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">Client Matching Machinery</span>
-            <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Advanced Talent Sourcing Grid</h2>
-            <p class="text-sm text-slate-400 mt-1">Filter pre-vetted Founders Cohort VAs by skill tags, shift availability, and AI simulation scores.</p>
+    <!-- Feed Stream -->
+    <div id="sanctuary-stream" class="space-y-4">
+      <div class="glow-card p-6 rounded-3xl border border-white/10 shadow-lg space-y-3">
+        <div class="flex justify-between items-center text-xs">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-8 h-8 rounded-full bg-glow-500/20 text-glow-300 flex items-center justify-center font-bold">LL</div>
+            <div>
+              <span class="font-bold text-white">Lei Lee Ann Abut <span class="text-glow-300 font-normal">#luzon-vas</span></span>
+              <p class="text-[10px] text-slate-400">Manila Hub • Verified Founders Cohort</p>
+            </div>
           </div>
-          <div class="flex gap-2">
-            <button onclick="filterTalent('all')" class="px-3 py-1.5 bg-gold-500 text-navy-950 font-bold text-xs rounded-xl">All (50)</button>
-            <button onclick="filterTalent('legal')" class="px-3 py-1.5 bg-navy-800 text-slate-300 font-bold text-xs rounded-xl hover:text-white">Legal / PI</button>
-            <button onclick="filterTalent('exec')" class="px-3 py-1.5 bg-navy-800 text-slate-300 font-bold text-xs rounded-xl hover:text-white">Executive</button>
-          </div>
+          <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-bold text-[10px]">KYC Verified</span>
         </div>
+        <p class="text-sm text-slate-200">Quiet night shift here in Manila! Finalized our automated Filevine pre-litigation trackers. So grateful for this community sanctuary where we build real tools together. Keep the Virtual Circle Glowing ✨</p>
+      </div>
+    </div>
+  </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <input type="text" id="talent-search" onkeyup="searchTalentGrid()" class="bg-navy-950 border border-slate-800 rounded-xl p-3 text-xs text-white" placeholder="Search candidate by name, skill, or tool (e.g. Filevine, HubSpot)...">
-          <select class="bg-navy-950 border border-slate-800 rounded-xl p-3 text-xs text-white">
-            <option>All Regional Hubs (Luzon, Visayas, Mindanao)</option>
-            <option>#luzon-vas (Manila / Baguio)</option>
-            <option>#visayas-vas (Cebu)</option>
-            <option>#mindanao-vas (Davao)</option>
-          </select>
-          <select class="bg-navy-950 border border-slate-800 rounded-xl p-3 text-xs text-white">
-            <option>Min AI Simulation Score: 90%+</option>
-            <option>Min AI Simulation Score: 80%+</option>
+  <!-- Tab 2: Client Matching Machinery -->
+  <div id="tab-matching" class="tab-content hidden space-y-6">
+    <div class="glow-card p-8 rounded-3xl border border-white/10 shadow-2xl space-y-6">
+      <div>
+        <span class="text-xs bg-glow-500/10 text-glow-300 border border-glow-500/30 px-3 py-1 rounded-full font-bold">Scam-Free Pairing</span>
+        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Automated Client Matching Machinery</h2>
+        <p class="text-sm text-slate-300 mt-1">Founders connect with pre-vetted Founders Cohort VAs based on verified skill badges and AI simulation scores.</p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">Select Specialization Track</label>
+          <select class="w-full bg-sanctuary-950/80 border border-white/10 rounded-xl p-3 text-xs text-white">
+            <option>Personal Injury Pre-Litigation & Filevine</option>
+            <option>Executive Assistant & C-Suite Operations</option>
+            <option>Real Estate & Airbnb Property Management</option>
           </select>
         </div>
-
-        <!-- Talent Grid Cards -->
-        <div id="talent-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-          <div class="bg-navy-950 p-5 rounded-2xl border border-slate-800 space-y-3">
-            <div class="flex justify-between items-start">
-              <div>
-                <span class="text-[10px] bg-gold-500/20 text-gold-400 px-2 py-0.5 rounded font-bold">Founders Seasoned VA</span>
-                <h4 class="font-bold text-base text-white mt-1">Lei Lee Ann A. <span class="text-xs text-slate-400 font-normal">(Manila Hub)</span></h4>
-              </div>
-              <span class="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-bold">AI Score: 98%</span>
-            </div>
-            <p class="text-xs text-slate-300">Specializing in Personal Injury pre-litigation workflows, subrogation demands, and Filevine/HubSpot automation.</p>
-            <div class="flex justify-between items-center pt-2 border-t border-slate-800 text-xs">
-              <span class="text-gold-400 font-semibold">Verified KYC • US Shift</span>
-              <button onclick="alert('Unlock profile workflow initiated for client matching.')" class="px-3 py-1.5 bg-gold-500 text-navy-950 rounded-lg font-heading font-bold">Unlock Profile 🔓</button>
-            </div>
-          </div>
-
-          <div class="bg-navy-950 p-5 rounded-2xl border border-slate-800 space-y-3">
-            <div class="flex justify-between items-start">
-              <div>
-                <span class="text-[10px] bg-mint/20 text-teal-400 px-2 py-0.5 rounded font-bold">Managed VA Pod Leader</span>
-                <h4 class="font-bold text-base text-white mt-1">Executive Assistant Squad #4 <span class="text-xs text-slate-400 font-normal">(Cebu Hub)</span></h4>
-              </div>
-              <span class="text-xs bg-emerald-500/10 text-emerald-400 px-2.5 py-0.5 rounded-full font-bold">AI Score: 95%</span>
-            </div>
-            <p class="text-xs text-slate-300">Senior EA paired with 2 trained Newbies handling inbox management, calendar synchronization, and travel logistics.</p>
-            <div class="flex justify-between items-center pt-2 border-t border-slate-800 text-xs">
-              <span class="text-gold-400 font-semibold">Retainer: $2,000/mo</span>
-              <button onclick="alert('Squad deployment inquiry submitted.')" class="px-3 py-1.5 bg-gold-500 text-navy-950 rounded-lg font-heading font-bold">Deploy Squad 🚀</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 3. Recruiter Pipeline Kanban Board -->
-    <div id="pipeline-tab" class="tab-content hidden space-y-6">
-      <div class="bg-navy-900 p-8 rounded-3xl border border-slate-800 shadow-2xl space-y-6">
         <div>
-          <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">B2B Headhunter Ecosystem</span>
-          <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Recruiter Pipeline Kanban Board</h2>
-          <p class="text-sm text-slate-400 mt-1">Track candidate progression from scraped ingestion to client placement success.</p>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <!-- Column 1 -->
-          <div class="bg-navy-950 p-4 rounded-2xl border border-slate-800 space-y-3">
-            <div class="flex justify-between items-center text-xs font-bold text-slate-300">
-              <span>1. Scraped / Ingested</span>
-              <span class="bg-slate-800 px-2 py-0.5 rounded text-gold-400">4</span>
-            </div>
-            <div class="bg-navy-900 p-3 rounded-xl border border-slate-800 text-xs space-y-1.5">
-              <span class="text-[10px] text-slate-400">OnlineJobs.ph Scrape</span>
-              <p class="font-bold text-white">Legal Assistant (PI)</p>
-              <span class="text-[10px] text-emerald-400">KYC Pending</span>
-            </div>
-          </div>
-
-          <!-- Column 2 -->
-          <div class="bg-navy-950 p-4 rounded-2xl border border-slate-800 space-y-3">
-            <div class="flex justify-between items-center text-xs font-bold text-slate-300">
-              <span>2. KYC & AI Sim Test</span>
-              <span class="bg-slate-800 px-2 py-0.5 rounded text-gold-400">2</span>
-            </div>
-            <div class="bg-navy-900 p-3 rounded-xl border border-slate-800 text-xs space-y-1.5">
-              <span class="text-[10px] text-slate-400">Founders Cohort</span>
-              <p class="font-bold text-white">Executive Assistant</p>
-              <span class="text-[10px] text-emerald-400">AI Score: 94%</span>
-            </div>
-          </div>
-
-          <!-- Column 3 -->
-          <div class="bg-navy-950 p-4 rounded-2xl border border-slate-800 space-y-3">
-            <div class="flex justify-between items-center text-xs font-bold text-slate-300">
-              <span>3. Client Interview</span>
-              <span class="bg-slate-800 px-2 py-0.5 rounded text-gold-400">1</span>
-            </div>
-            <div class="bg-navy-900 p-3 rounded-xl border border-slate-800 text-xs space-y-1.5">
-              <span class="text-[10px] text-slate-400">US Real Estate Founder</span>
-              <p class="font-bold text-white">Property Manager Pod</p>
-              <span class="text-[10px] text-gold-400">Scheduled Today</span>
-            </div>
-          </div>
-
-          <!-- Column 4 -->
-          <div class="bg-navy-950 p-4 rounded-2xl border border-slate-800 space-y-3">
-            <div class="flex justify-between items-center text-xs font-bold text-slate-300">
-              <span>4. Placed & Active</span>
-              <span class="bg-slate-800 px-2 py-0.5 rounded text-gold-400">12</span>
-            </div>
-            <div class="bg-navy-900 p-3 rounded-xl border border-slate-800 text-xs space-y-1.5">
-              <span class="text-[10px] text-slate-400">Success Fee Released</span>
-              <p class="font-bold text-white">Lead Case Manager</p>
-              <span class="text-[10px] text-emerald-400">Active Retainer ✓</span>
-            </div>
-          </div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">Shift Preference</label>
+          <select class="w-full bg-sanctuary-950/80 border border-white/10 rounded-xl p-3 text-xs text-white">
+            <option>US Graveyard Shift (EST/PST)</option>
+            <option>Australian Business Hours (AEST)</option>
+          </select>
         </div>
       </div>
-    </div>
-
-    <!-- 4. Mentor Rates & Material Splits Tab -->
-    <div id="mentor-tab" class="tab-content hidden space-y-6">
-      <div class="bg-navy-900 p-8 rounded-3xl border border-slate-800 shadow-2xl space-y-6">
+      <button onclick="runMatch()" class="w-full py-3 bg-glow-500 text-sanctuary-950 rounded-xl font-heading font-extrabold text-xs shadow-lg hover:bg-glow-400 transition">Execute Secure Match 🎯</button>
+      <div id="match-res" class="hidden p-4 bg-sanctuary-950/90 rounded-2xl border border-glow-500/30 text-xs text-slate-200 flex justify-between items-center">
         <div>
-          <span class="text-xs bg-gold-500/20 text-gold-400 px-3 py-1 rounded-full font-bold">Coach & Material Ecosystem</span>
-          <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Mentor Rate Proposal & Material Split Portal</h2>
-          <p class="text-sm text-slate-400 mt-1">Coaches set their own rates; platform earns commission based on embedded training modules and simulation frameworks.</p>
+          <strong>Top Match Found:</strong> Founders Seasoned VA #42 (Manila Hub) • AI Score: 98%
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input type="text" id="m-name" class="bg-navy-950 border border-slate-800 rounded-xl p-3 text-xs text-white" placeholder="Mentor Full Name">
-          <input type="text" id="m-rate" class="bg-navy-950 border border-slate-800 rounded-xl p-3 text-xs text-white" placeholder="Custom Hourly Rate (e.g., $50/hr)">
-        </div>
-        <input type="text" id="m-title" class="w-full bg-navy-950 border border-slate-800 rounded-xl p-3 text-xs text-white" placeholder="Embedded Training Module / Simulation Framework Title">
-        <button onclick="submitMentorProposal()" class="w-full py-3 bg-gold-500 text-navy-950 rounded-xl font-heading font-extrabold text-xs shadow-lg hover:bg-gold-400 transition">Submit Proposal & Material Split 🚀</button>
-        <div id="m-feedback" class="hidden p-3 bg-navy-950 rounded-xl border border-emerald-500/30 text-xs text-emerald-400"></div>
+        <button onclick="alert('Secure unlock protocol initiated.')" class="px-4 py-2 bg-glow-500 text-sanctuary-950 rounded-xl font-heading font-bold">Unlock Profile 🔓</button>
       </div>
     </div>
+  </div>
 
-    <!-- 5. Scam-Buster & Blacklists Tab -->
-    <div id="scam-tab" class="tab-content hidden space-y-6">
-      <div class="bg-navy-900 p-8 rounded-3xl border border-slate-800 shadow-2xl space-y-6">
-        <div>
-          <span class="text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full font-bold">Zero-Tolerance Protection</span>
-          <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">AI Scam-Buster & Company Risk Registry</h2>
-          <p class="text-sm text-slate-400 mt-1">Instantly analyze scraped job offers for red flags and fraudulent recruiter signatures.</p>
+  <!-- Tab 3: Mentor Rates & SOP Portal -->
+  <div id="tab-mentor" class="tab-content hidden space-y-6">
+    <div class="glow-card p-8 rounded-3xl border border-white/10 shadow-2xl space-y-6">
+      <div>
+        <span class="text-xs bg-glow-500/10 text-glow-300 border border-glow-500/30 px-3 py-1 rounded-full font-bold">Coach Autonomy</span>
+        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Mentor Rate Proposal & Material Split Portal</h2>
+        <p class="text-sm text-slate-300 mt-1">Coaches set their own rates; platform earns commission based on embedded training modules and SOP frameworks.</p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <input type="text" id="m-name" class="bg-sanctuary-950/80 border border-white/10 rounded-xl p-3 text-xs text-white" placeholder="Mentor Full Name">
+        <input type="text" id="m-rate" class="bg-sanctuary-950/80 border border-white/10 rounded-xl p-3 text-xs text-white" placeholder="Custom Hourly Rate (e.g., $50/hr)">
+      </div>
+      <input type="text" id="m-title" class="w-full bg-sanctuary-950/80 border border-white/10 rounded-xl p-3 text-xs text-white" placeholder="Embedded Training Module / Simulation Framework Title">
+      <button onclick="submitMentor()" class="w-full py-3 bg-glow-500 text-sanctuary-950 rounded-xl font-heading font-extrabold text-xs shadow-lg hover:bg-glow-400 transition">Submit Proposal & Material Split 🚀</button>
+      <div id="m-res" class="hidden p-3 bg-sanctuary-950/90 rounded-2xl border border-emerald-500/30 text-xs text-emerald-400">Proposal logged with material-based revenue split.</div>
+    </div>
+  </div>
+
+  <!-- Tab 4: Scam-Buster & Shield -->
+  <div id="tab-scam" class="tab-content hidden space-y-6">
+    <div class="glow-card p-8 rounded-3xl border border-white/10 shadow-2xl space-y-6">
+      <div>
+        <span class="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-3 py-1 rounded-full font-bold">Sanctuary Protection</span>
+        <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">AI Scam-Buster & Company Risk Registry</h2>
+        <p class="text-sm text-slate-300 mt-1">Instantly analyze job postings for upfront training fees, WhatsApp redirection, and fraudulent recruiter signatures.</p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-sanctuary-950/80 p-5 rounded-2xl border border-white/10 space-y-3">
+          <h4 class="font-heading font-bold text-sm text-white">Instant Job Description Scanner</h4>
+          <textarea id="scam-box" class="w-full bg-sanctuary-900 border border-white/10 rounded-xl p-3 text-xs text-white" rows="3" placeholder="Paste job offer text..."></textarea>
+          <button onclick="runScam()" class="w-full py-2 bg-glow-500 text-sanctuary-950 rounded-xl font-heading font-bold text-xs">Run AI Scam Analysis 🛡️</button>
+          <div id="scam-out" class="hidden p-3 bg-sanctuary-900 rounded-xl border border-red-500/30 text-xs text-red-300">⚠️ High Risk: Upfront fee and WhatsApp redirection flagged.</div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div class="bg-navy-950 p-5 rounded-2xl border border-slate-800 space-y-3">
-            <h4 class="font-heading font-bold text-sm text-white">Instant Job Description Scanner</h4>
-            <textarea id="scam-input" class="w-full bg-navy-900 border border-slate-800 rounded-xl p-3 text-xs text-white" rows="4" placeholder="Paste scraped job posting here..."></textarea>
-            <button onclick="runScamScan()" class="w-full py-2.5 bg-gold-500 text-navy-950 rounded-xl font-heading font-bold text-xs">Run AI Scam Analysis 🛡️</button>
-            <div id="scam-output" class="hidden p-3 bg-navy-900 rounded-xl border border-red-500/30 text-xs text-red-300"></div>
-          </div>
-          <div class="bg-navy-950 p-5 rounded-2xl border border-slate-800 space-y-3">
-            <h4 class="font-heading font-bold text-sm text-white">Ecosystem Blacklisted Registry</h4>
-            <div class="p-3 bg-navy-900 rounded-xl border border-red-500/30 flex justify-between items-center text-xs">
-              <div>
-                <span class="font-bold text-red-400">FakeAgency Global</span>
-                <p class="text-[10px] text-slate-400">Flagged for upfront training fees</p>
-              </div>
-              <span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-bold">Blacklisted</span>
+        <div class="bg-sanctuary-950/80 p-5 rounded-2xl border border-white/10 space-y-3">
+          <h4 class="font-heading font-bold text-sm text-white">Sanctuary Blacklist Registry</h4>
+          <div class="p-3 bg-sanctuary-900 rounded-xl border border-red-500/30 flex justify-between items-center text-xs">
+            <div>
+              <span class="text-red-400 font-bold">FakeAgency Global</span>
+              <p class="text-[10px] text-slate-400">Flagged for withheld wages</p>
             </div>
+            <span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-bold">Blacklisted</span>
           </div>
         </div>
       </div>
     </div>
+  </div>
 
-  </main>
-</div>
+  <!-- Tab 5: Recruiter Hub -->
+  <div id="tab-recruiter" class="tab-content hidden space-y-6">
+    <div class="glow-card p-8 rounded-3xl border border-white/10 shadow-2xl space-y-6">
+      <div class="flex justify-between items-center">
+        <div>
+          <span class="text-xs bg-glow-500/10 text-glow-300 border border-glow-500/30 px-3 py-1 rounded-full font-bold">B2B Headhunter Ecosystem</span>
+          <h2 class="text-2xl md:text-3xl font-heading font-extrabold text-white mt-2">Multi-Tiered Recruiter & Headhunter Hub</h2>
+          <p class="text-sm text-slate-300 mt-1">Manage candidate pipelines and tiered subscription passes securely.</p>
+        </div>
+        <button onclick="alert('Recruiter subscription pass activated.')" class="px-5 py-2.5 bg-glow-500 text-sanctuary-950 rounded-xl font-heading font-extrabold text-xs shadow">Activate Recruiter Pass 🤝</button>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-sanctuary-950/80 p-5 rounded-2xl border border-white/10">
+          <h4 class="font-bold text-glow-300 text-sm">Basic Recruiter</h4>
+          <p class="text-xs text-slate-400 mt-1">₱2,500/mo directory access.</p>
+        </div>
+        <div class="bg-sanctuary-950/80 p-5 rounded-2xl border border-glow-500/40">
+          <h4 class="font-bold text-glow-300 text-sm">Pro Headhunter</h4>
+          <p class="text-xs text-slate-400 mt-1">₱6,000/mo pipeline management.</p>
+        </div>
+        <div class="bg-sanctuary-950/80 p-5 rounded-2xl border border-white/10">
+          <h4 class="font-bold text-glow-300 text-sm">Enterprise Agency</h4>
+          <p class="text-xs text-slate-400 mt-1">Custom placement success split.</p>
+        </div>
+      </div>
+    </div>
+  </div>
 
-<footer class="text-center py-6 text-xs text-slate-500 border-t border-slate-900 mt-12">
+</main>
+
+<footer class="text-center py-6 text-xs text-slate-400 border-t border-white/5 mt-12">
   © 2026 The Virtual Circle Philippines. Keep the Virtual Circle Glowing ✨
 </footer>
 
 <script>
-function switchTab(tabId) {
+function switchTab(id) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-  document.getElementById(tabId + '-tab').classList.remove('hidden');
+  document.getElementById('tab-' + id).classList.remove('hidden');
 
-  document.querySelectorAll('aside button').forEach(btn => {
-    btn.classList.remove('bg-gold-500', 'text-navy-950', 'shadow-lg', 'shadow-gold-500/10');
-    btn.classList.add('text-slate-300', 'bg-navy-900', 'border', 'border-slate-800');
+  document.querySelectorAll('main > div:first-child button').forEach(btn => {
+    btn.className = 'px-5 py-2.5 bg-sanctuary-800/80 text-slate-300 rounded-2xl font-heading font-bold text-xs hover:text-white hover:bg-sanctuary-700 transition-all border border-white/5';
   });
-  const activeBtn = document.getElementById('nav-' + tabId);
-  if (activeBtn) {
-    activeBtn.classList.remove('text-slate-300', 'bg-navy-900', 'border', 'border-slate-800');
-    activeBtn.classList.add('bg-gold-500', 'text-navy-950', 'shadow-lg', 'shadow-gold-500/10');
-  }
+  document.getElementById('btn-' + id).className = 'px-5 py-2.5 bg-glow-500 text-sanctuary-950 rounded-2xl font-heading font-bold text-xs shadow-lg shadow-glow-500/20 transition-all';
 }
 
-function executeScraper() {
-  const url = document.getElementById('scrape-url').value;
-  const source = document.getElementById('scrape-source').value;
-  const container = document.getElementById('scrape-results-container');
-  const box = document.getElementById('scrape-output-box');
-  
-  container.classList.remove('hidden');
-  if (!url.trim()) {
-    box.innerHTML = `<span class="text-amber-400">⚠️ Please enter a valid URL to execute scraping.</span>`;
-    return;
-  }
-
-  box.innerHTML = `
-    <div><strong>Target Source:</strong> ${source}</div>
-    <div><strong>Target URL:</strong> ${url}</div>
-    <div><strong>Status:</strong> Successfully parsed DOM elements. Extracted 1 job posting / 12 candidate skills.</div>
-    <div class="text-gold-400 mt-2"><strong>Parsed JSON Payload:</strong> { "title": "Legal Virtual Assistant", "compensation": "$12/hr", "hub": "#luzon-vas", "kyc_required": true }</div>
+function postSanctuary() {
+  const txt = document.getElementById('sanctuary-input').value;
+  if (!txt.trim()) return;
+  const stream = document.getElementById('sanctuary-stream');
+  const card = document.createElement('div');
+  card.className = 'glow-card p-6 rounded-3xl border border-white/10 shadow-lg space-y-3';
+  card.innerHTML = `
+    <div class="flex justify-between items-center text-xs">
+      <div class="flex items-center space-x-2.5">
+        <div class="w-8 h-8 rounded-full bg-glow-500/20 text-glow-300 flex items-center justify-center font-bold">YOU</div>
+        <div>
+          <span class="font-bold text-white">You (Verified Member)</span>
+          <p class="text-[10px] text-slate-400">Just now • KYC Verified</p>
+        </div>
+      </div>
+      <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-bold text-[10px]">KYC Verified</span>
+    </div>
+    <p class="text-sm text-slate-200">${txt}</p>
   `;
+  stream.prepend(card);
+  document.getElementById('sanctuary-input').value = '';
 }
 
-function submitMentorProposal() {
-  const name = document.getElementById('m-name').value;
-  const rate = document.getElementById('m-rate').value;
-  const title = document.getElementById('m-title').value;
-  const fb = document.getElementById('m-feedback');
-  fb.classList.remove('hidden');
-  if (!name || !rate || !title) {
-    fb.innerHTML = "⚠️ Please fill in all mentor proposal fields.";
-    fb.className = "p-3 bg-navy-950 rounded-xl border border-amber-500/30 text-xs text-amber-400";
-    return;
+function runMatch() {
+  document.getElementById('match-res').classList.remove('hidden');
+}
+
+function submitMentor() {
+  if (document.getElementById('m-name').value) {
+    document.getElementById('m-res').classList.remove('hidden');
   }
-  fb.innerHTML = `✅ Proposal for <strong>${name}</strong> (${rate}) with module <strong>"${title}"</strong> logged successfully into database with automated revenue split.`;
 }
 
-function runScamScan() {
-  const text = document.getElementById('scam-input').value;
-  const out = document.getElementById('scam-output');
-  out.classList.remove('hidden');
-  if (!text.trim()) {
-    out.innerHTML = "⚠️ Please paste job description text.";
-    return;
+function runScam() {
+  if (document.getElementById('scam-box').value) {
+    document.getElementById('scam-out').classList.remove('hidden');
   }
-  out.innerHTML = "🔍 AI Analysis Complete: <strong>HIGH RISK DETECTED</strong>. Scraped text contains suspicious training fee requests and WhatsApp redirection.";
-}
-
-function searchTalentGrid() {
-  // Live filter simulation for talent grid
 }
 </script>
 </body>

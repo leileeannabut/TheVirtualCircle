@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VA BFF - Your Pocket Bestie & Virtual Circle</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        navy: { 900: '#0F172A', 800: '#1E3A8A', 700: '#1D4ED8' },
+                        gold: { 500: '#EAB308', 600: '#CA8A04', 400: '#FACC15' },
+                        cream: '#FFFBEB',
+                        mint: '#F0FDFA',
+                        coral: '#F59E0B'
+                    },
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        heading: ['"League Spartan"', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .watermark {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; opacity: 0.04; z-index: 50;
+            background-image: repeating-linear-gradient(45deg, #1E3A8A 0, #1E3A8A 100px, transparent 0, transparent 200px);
+            font-family: 'League Spartan', sans-serif;
+            font-size: 14px; color: #1E3A8A;
+            display: flex; flex-wrap: wrap; align-content: space-around; overflow: hidden;
+        }
+        body { user-select: none; -webkit-touch-callout: none; }
+    </style>
+</head>
+<body class="bg-navy-900 text-slate-100 font-sans antialiased min-h-screen flex flex-col justify-between selection:bg-gold-500 selection:text-navy-900 pb-20 md:pb-0 md:pl-64">
+
+    <div class="watermark">VA BFF SECURE SECURE VA BFF SECURE SECURE VA BFF SECURE SECURE</div>
+
+    <aside class="hidden md:flex flex-col w-64 bg-navy-800 border-r border-slate-700/50 fixed inset-y-0 left-0 z-40 p-6">
+        <div class="flex items-center space-x-3 mb-8">
+            <div class="w-10 h-10 rounded-xl bg-gold-500 flex items-center justify-center text-navy-900 font-heading font-bold text-xl shadow-lg">BFF</div>
+            <div>
+                <h1 class="font-heading font-bold text-xl tracking-wide text-white">VA BFF</h1>
+                <p class="text-xs text-gold-400">Your Virtual Circle & Copilot</p>
+            </div>
+        </div>
+
+        <nav class="space-y-1.5 flex-1 overflow-y-auto pr-1">
+            <button onclick="switchTab('feed')" id="nav-feed" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all bg-gold-500 text-navy-900 shadow-md">
+                <span class="text-lg">🧭</span><span>VA News Feed</span>
+            </button>
+            <button onclick="switchTab('directory')" id="nav-directory" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+                <span class="text-lg">🪪</span><span>VA Directory & Profiles</span>
+            </button>
+            <button onclick="switchTab('messages')" id="nav-messages" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+                <span class="text-lg">💬</span><span>Circle Chat <span class="bg-gold-500/20 text-gold-400 text-[10px] px-1.5 py-0.5 rounded-full ml-auto">3</span></span>
+            </button>
+            <button onclick="switchTab('smash')" id="nav-smash" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+                <span class="text-lg">🏷️</span><span>Smashboards & Hubs</span>
+            </button>
+            <button onclick="switchTab('sim')" id="nav-sim" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+                <span class="text-lg">🚀</span><span>Role Simulations</span>
+            </button>
+            <button onclick="switchTab('bestie')" id="nav-bestie" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+                <span class="text-lg">💡</span><span>VA Bestie AI</span>
+            </button>
+            <button onclick="switchTab('earn')" id="nav-earn" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+                <span class="text-lg">📊</span><span>Rate & Pitch</span>
+            </button>
+            <button onclick="switchTab('checkin')" id="nav-checkin" class="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-heading font-semibold text-sm transition-all text-slate-300 hover:bg-navy-700/50">
+                <span class="text-lg">📓</span><span>Shift Journal</span>
+            </button>
+        </nav>
+
+        <div class="pt-6 border-t border-slate-700/50 space-y-3">
+            <div class="bg-navy-900/60 p-3 rounded-xl border border-gold-500/20 text-center">
+                <span class="text-[10px] text-gold-400 font-bold block mb-1">☕ Keep the Virtual Circle Glowing</span>
+                <p class="text-[11px] text-slate-300 mb-2">Support server & AI costs starting at ₱50!</p>
+                <button onclick="openDonateModal()" class="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-gold-400 border border-gold-500/30 rounded-lg font-heading font-bold text-xs transition">Tip ₱50+ (GCash/Maya)</button>
+            </div>
+
+            <div class="bg-navy-900/60 p-4 rounded-xl border border-gold-500/20">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-heading font-bold text-gold-400">VA BFF PRO</span>
+                    <span class="text-[10px] bg-gold-500/20 text-gold-400 px-2 py-0.5 rounded-full font-semibold">All-Access</span>
+                </div>
+                <p class="text-xs text-slate-300 mb-3">₱399/mo or ₱3,499/yr for all 8 sims & AI.</p>
+                <button onclick="openPaywall()" class="w-full py-2 bg-gradient-to-r from-gold-500 to-amber-500 text-navy-900 rounded-lg font-heading font-bold text-xs shadow hover:opacity-90 transition">Upgrade Pro ✨</button>
+            </div>
+        </div>
+    </aside>
+
+    <header class="md:hidden bg-navy-800 border-b border-slate-700/50 px-4 py-3 sticky top-0 z-40 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+            <div class="w-8 h-8 rounded-lg bg-gold-500 flex items-center justify-center text-navy-900 font-heading font-bold text-sm">BFF</div>
+            <span class="font-heading font-bold text-lg text-white">VA BFF</span>
+        </div>
+        <button onclick="openPaywall()" class="px-3 py-1 bg-gold-500 text-navy-900 rounded-lg font-heading font-bold text-xs">Pro ✨</button>
+    </header>
+
+    <main class="flex-1 max-w-5xl w-full mx-auto p-4 md:p-8 z-10">
+        <!-- Content tabs are embedded in runtime -->
+    </main>
+
+    <footer class="text-center py-6 text-xs text-slate-500 border-t border-slate-800 mt-12">
+        © 2026 VA BFF Philippines. Keep the Virtual Circle Glowing ✨
+    </footer>
+</body>
+</html>

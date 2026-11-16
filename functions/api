@@ -1,0 +1,193 @@
+// Single API router for Phase 1 Part 1: auth, OTP, KYC, config, admin KYC review.
+import { json, hashPw, verifyPw, createSession, clearCookie, getUser, rateLimit, audit,
+         turnstileOk, sendSms, randHex, sha256, hmac } from '../_lib/util.js';
+
+const now = () => Date.now();
+const MAX_IMG = 5 * 1024 * 1024;
+
+async function sendOtp(env, userId, mobile) {
+  const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, '0');
+  await env.KV.put(`otp:${userId}`, JSON.stringify({ h: await sha256(code + userId), tries: 0 }), { expirationTtl: 300 });
+  await sendSms(env, mobile, `Your Virtual Circle code is ${code}. It expires in 5 minutes.`);
+}
+
+const routes = {
+  // ---------- public ----------
+  async 'GET config'({ env }) {
+    const { results } = await env.DB.prepare("SELECT key,value FROM config WHERE key IN ('newbie_slots_remaining','seasoned_slots_remaining','countdown_ends_at')").all();
+    return json(Object.fromEntries(results.map((r) => [r.key, r.value])));
+  },
+
+  async 'POST auth/register'({ request, env, ip }) {
+    await rateLimit(env, `reg:${ip}`, 5, 600);
+    const b = await request.json();
+    const email = String(b.email || '').trim().toLowerCase();
+    let mobile = String(b.mobile || '').replace(/[\s-]/g, '');
+    const name = String(b.name || '').trim().slice(0, 60);
+    const tier = b.tier;
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: 'Enter a valid email.' }, 400);
+    if (!/^(\+63|0)9\d{9}$/.test(mobile)) return json({ error: 'Enter a valid PH mobile (09XXXXXXXXX).' }, 400);
+    if (mobile.startsWith('0')) mobile = '+63' + mobile.slice(1);
+    if (name.length < 2) return json({ error: 'Enter your name.' }, 400);
+    if (String(b.password || '').length < 10) return json({ error: 'Password must be at least 10 characters.' }, 400);
+    if (!['newbie', 'seasoned'].includes(tier)) return json({ error: 'Choose Newbie or Seasoned.' }, 400);
+    if (!(await turnstileOk(env, b.turnstile, ip))) return json({ error: 'Verification failed. Try again.' }, 400);
+
+    // Claim a founders slot atomically
+    const slotKey = `${tier}_slots_remaining`;
+    const claim = await env.DB.prepare("UPDATE config SET value=CAST(CAST(value AS INTEGER)-1 AS TEXT) WHERE key=? AND CAST(value AS INTEGER)>0").bind(slotKey).run();
+    if (!claim.meta.changes) return json({ error: 'Founders slots for this tier are full.' }, 409);
+
+    const id = crypto.randomUUID();
+    const fp = b.fp ? await sha256(String(b.fp)) : null;
+    try {
+      await env.DB.prepare(
+        `INSERT INTO users (id,email,mobile,pw_hash,display_name,cohort_tier,referral_code,device_hash,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?)`
+      ).bind(id, email, mobile, await hashPw(b.password), name, tier, randHex(4).toUpperCase(), fp, now()).run();
+    } catch (e) {
+      await env.DB.prepare("UPDATE config SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT) WHERE key=?").bind(slotKey).run();
+      return json({ error: 'That email or mobile is already registered.' }, 409);
+    }
+    if (fp) { // flag (not ban) duplicate devices for admin review
+      const dup = await env.DB.prepare('SELECT COUNT(*) c FROM users WHERE device_hash=? AND id<>?').bind(fp, id).first();
+      if (dup.c > 0) await env.DB.prepare('INSERT INTO escalation_logs (id,user_id,kind,detail,created_at) VALUES (?,?,?,?,?)')
+        .bind(crypto.randomUUID(), id, 'duplicate_device', `${dup.c} other account(s) share this device`, now()).run();
+    }
+    await sendOtp(env, id, mobile);
+    return json({ ok: true, next: 'otp' }, 200, { 'set-cookie': await createSession(env, id) });
+  },
+
+  async 'POST auth/login'({ request, env, ip }) {
+    await rateLimit(env, `login:${ip}`, 10, 600);
+    const b = await request.json();
+    const u = await env.DB.prepare('SELECT * FROM users WHERE email=?').bind(String(b.email || '').trim().toLowerCase()).first();
+    // Always run a hash to keep timing similar for unknown emails
+    const ok = u ? await verifyPw(String(b.password || ''), u.pw_hash) : (await hashPw('x'), false);
+    if (!ok) return json({ error: 'Incorrect email or password.' }, 401);
+    if (u.status === 'suspended') return json({ error: 'This account is suspended.' }, 403);
+    return json({ ok: true, status: u.status }, 200, { 'set-cookie': await createSession(env, u.id) });
+  },
+
+  async 'POST auth/logout'({ request, env }) {
+    const m = (request.headers.get('cookie') || '').match(/vc_session=([a-f0-9]+)/);
+    if (m) await env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(await sha256(m[1])).run();
+    return json({ ok: true }, 200, { 'set-cookie': clearCookie() });
+  },
+
+  // ---------- authenticated ----------
+  async 'GET me'({ user }) { return user ? json({ user }) : json({ user: null }); },
+
+  async 'POST auth/otp/request'({ env, user }) {
+    if (!user) return json({ error: 'Sign in first.' }, 401);
+    await rateLimit(env, `otp:${user.id}`, 3, 600);
+    await sendOtp(env, user.id, user.mobile);
+    return json({ ok: true });
+  },
+
+  async 'POST auth/otp/verify'({ request, env, user }) {
+    if (!user) return json({ error: 'Sign in first.' }, 401);
+    const { code } = await request.json();
+    const raw = await env.KV.get(`otp:${user.id}`);
+    if (!raw) return json({ error: 'Code expired. Request a new one.' }, 400);
+    const o = JSON.parse(raw);
+    if (o.tries >= 5) return json({ error: 'Too many wrong codes. Request a new one.' }, 429);
+    if ((await sha256(String(code) + user.id)) !== o.h) {
+      o.tries++; await env.KV.put(`otp:${user.id}`, JSON.stringify(o), { expirationTtl: 300 });
+      return json({ error: 'Wrong code.' }, 400);
+    }
+    await env.KV.delete(`otp:${user.id}`);
+    await env.DB.prepare("UPDATE users SET mobile_verified=1, status=CASE WHEN status='pending_otp' THEN 'pending_kyc' ELSE status END WHERE id=?").bind(user.id).run();
+    return json({ ok: true, next: 'kyc' });
+  },
+
+  async 'POST kyc/submit'({ request, env, user }) {
+    if (!user) return json({ error: 'Sign in first.' }, 401);
+    if (!user.mobile_verified) return json({ error: 'Verify your mobile first.' }, 403);
+    if (!['pending_kyc', 'in_review'].includes(user.status)) return json({ error: 'Verification not needed.' }, 400);
+    await rateLimit(env, `kyc:${user.id}`, 3, 3600);
+    const f = await request.formData();
+    const idNum = String(f.get('id_number') || '').replace(/\s/g, '').toUpperCase();
+    const idType = String(f.get('id_type') || '');
+    const idPhoto = f.get('id_photo'), selfie = f.get('selfie');
+    if (!['philsys', 'drivers_license', 'passport', 'umid', 'prc', 'other'].includes(idType) || idNum.length < 5)
+      return json({ error: 'Choose an ID type and enter the ID number.' }, 400);
+    for (const file of [idPhoto, selfie]) {
+      if (!file || typeof file === 'string' || !/^image\/(jpeg|png|webp)$/.test(file.type) || file.size > MAX_IMG)
+        return json({ error: 'Upload a JPG/PNG/WebP photo of your ID and a selfie (max 5 MB each).' }, 400);
+    }
+    const idHash = await hmac(env.PEPPER || 'dev-pepper', idNum);
+    const dup = await env.DB.prepare("SELECT user_id FROM kyc_submissions WHERE id_hash=? AND user_id<>? AND status<>'rejected'").bind(idHash, user.id).first();
+    if (dup) {
+      await env.DB.prepare('INSERT INTO escalation_logs (id,user_id,kind,detail,created_at) VALUES (?,?,?,?,?)')
+        .bind(crypto.randomUUID(), user.id, 'duplicate_id', 'ID already used by another account', now()).run();
+      return json({ error: 'This ID is already linked to another account.' }, 409);
+    }
+    const sid = crypto.randomUUID();
+    const idKey = `kyc/${user.id}/${sid}-id`, selfieKey = `kyc/${user.id}/${sid}-selfie`;
+    await env.KYC.put(idKey, idPhoto.stream(), { httpMetadata: { contentType: idPhoto.type } });
+    await env.KYC.put(selfieKey, selfie.stream(), { httpMetadata: { contentType: selfie.type } });
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO kyc_submissions (id,user_id,id_type,id_hash,id_key,selfie_key,created_at) VALUES (?,?,?,?,?,?,?)').bind(sid, user.id, idType, idHash, idKey, selfieKey, now()),
+      env.DB.prepare("UPDATE users SET status='in_review' WHERE id=?").bind(user.id),
+    ]);
+    return json({ ok: true, next: 'review' });
+  },
+
+  // ---------- admin ----------
+  async 'GET admin/kyc'({ env, user }) {
+    if (!isStaff(user)) return json({ error: 'Forbidden' }, 403);
+    const { results } = await env.DB.prepare(
+      `SELECT k.id,k.id_type,k.created_at,u.display_name,u.email,u.cohort_tier,
+        (SELECT COUNT(*) FROM escalation_logs e WHERE e.user_id=u.id) flags
+       FROM kyc_submissions k JOIN users u ON u.id=k.user_id WHERE k.status='pending' ORDER BY k.created_at`).all();
+    return json({ items: results });
+  },
+
+  async 'GET admin/kyc/file'({ env, user, url }) {
+    if (!isStaff(user)) return json({ error: 'Forbidden' }, 403);
+    const row = await env.DB.prepare('SELECT id_key,selfie_key FROM kyc_submissions WHERE id=?').bind(url.searchParams.get('id')).first();
+    if (!row) return json({ error: 'Not found' }, 404);
+    const obj = await env.KYC.get(url.searchParams.get('which') === 'selfie' ? row.selfie_key : row.id_key);
+    if (!obj) return json({ error: 'Not found' }, 404);
+    await audit(env, user.id, 'kyc_view', url.searchParams.get('id'));
+    return new Response(obj.body, { headers: { 'content-type': obj.httpMetadata.contentType, 'cache-control': 'private, no-store' } });
+  },
+
+  async 'POST admin/kyc/review'({ request, env, user }) {
+    if (!isStaff(user)) return json({ error: 'Forbidden' }, 403);
+    const { id, approve, note } = await request.json();
+    const k = await env.DB.prepare("SELECT * FROM kyc_submissions WHERE id=? AND status='pending'").bind(id).first();
+    if (!k) return json({ error: 'Not found or already reviewed.' }, 404);
+    const stmts = [env.DB.prepare('UPDATE kyc_submissions SET status=?,note=?,reviewed_by=?,reviewed_at=? WHERE id=?')
+      .bind(approve ? 'approved' : 'rejected', String(note || '').slice(0, 300), user.id, now(), id)];
+    if (approve) stmts.push(
+      env.DB.prepare("UPDATE users SET status='active' WHERE id=?").bind(k.user_id),
+      env.DB.prepare('INSERT OR IGNORE INTO profiles (user_id,updated_at) VALUES (?,?)').bind(k.user_id, now()),
+      env.DB.prepare("INSERT OR IGNORE INTO user_badges (user_id,badge_id,awarded_at) VALUES (?,'verified',?),(?,'founder',?)").bind(k.user_id, now(), k.user_id, now()));
+    else stmts.push(env.DB.prepare("UPDATE users SET status='pending_kyc' WHERE id=?").bind(k.user_id));
+    await env.DB.batch(stmts);
+    await audit(env, user.id, approve ? 'kyc_approve' : 'kyc_reject', k.user_id, note);
+    return json({ ok: true });
+  },
+};
+
+const isStaff = (u) => u && ['admin', 'moderator'].includes(u.role);
+
+export async function onRequest({ request, env, params }) {
+  const url = new URL(request.url);
+  const method = request.method;
+  try {
+    // CSRF: state-changing requests must come from our own origin
+    if (!['GET', 'HEAD'].includes(method) && request.headers.get('origin') !== url.origin) return json({ error: 'Bad origin' }, 403);
+    const path = [].concat(params.path || []).join('/');
+    const handler = routes[`${method} ${path}`];
+    if (!handler) return json({ error: 'Not found' }, 404);
+    const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+    return await handler({ request, env, url, ip, user: await getUser(request, env) });
+  } catch (e) {
+    if (e instanceof Response) return e; // thrown by rateLimit
+    console.error(e);
+    return json({ error: 'Something went wrong. Please try again.' }, 500);
+  }
+}

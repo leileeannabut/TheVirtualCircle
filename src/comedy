@@ -1,0 +1,314 @@
+// Circle Laughs 😂: the funny side of VA life.
+//   Laugh Feed (structured meme formats rendered as cards, no image hosting), Circle Writers (approved writers),
+//   Circle Laughs Podcast (approved comedians; episodes embedded from YouTube/Spotify/SoundCloud), story submissions.
+import { fail, now, uid, pj, clean, rate, audit, cfgNum } from './lib.js';
+import { screenText, OFF_PLATFORM } from './services.js';
+import { need, needActive, STAFF } from './routes.js';
+import { notify, rankName } from './social.js';
+
+const REACTS = ['tawa', 'dead', 'relate', 'real'];
+const ROLES = (u) => String(u.creator_roles || '').split(',').filter(Boolean);
+const isCreator = (u, kind) => STAFF.includes(u.role) || ROLES(u).includes(kind);
+const WEEK = 7 * 864e5;
+
+// Each format is a small set of text fields; the browser draws them as a meme card.
+const FORMATS = {
+  story: { label: 'Funny story', fields: { text: 1500 } },
+  dialog: { label: 'Client vs Me', fields: { lines: 'lines' } },
+  expectation: { label: 'Expectation vs Reality', fields: { expectation: 300, reality: 300 } },
+  nobody: { label: 'Nobody: …', fields: { who: 60, text: 300 } },
+  pov: { label: 'POV', fields: { text: 300 } },
+  starter: { label: 'Starter pack', fields: { title: 80, items: 'items' } },
+  tracker: { label: 'Time tracker screenshot', fields: { activity: 'pct', timer: 12, caption: 200, punchline: 300 } },
+};
+
+// Hides phone numbers, emails and Telegram/WhatsApp links in every field. Penalties are applied once per submission (guard()).
+async function cleanText(c, u, s, max) {
+  return clean(s, max).replace(/\\n/g, '\n').replace(new RegExp(OFF_PLATFORM.source, 'gi'), '[hidden: keep it on-platform]');
+}
+async function guard(c, u, raw) { // one screen per submission: penalty for off-platform contact attempts
+  if (u.muted_until > now()) fail('You are muted for 24 hours after a safety flag.', 403);
+  return screenText(c, u, String(raw || '').slice(0, 5000));
+}
+async function cleanBody(c, u, format, raw) {
+  const f = (Object.prototype.hasOwnProperty.call(FORMATS, format || '') && FORMATS[format]) || fail('Pick a format.');
+  const b = raw && typeof raw === 'object' ? raw : {};
+  const out = {};
+  for (const [k, spec] of Object.entries(f.fields)) {
+    if (spec === 'lines') {
+      const lines = (Array.isArray(b.lines) ? b.lines : []).slice(0, 10).map((l) => ({ who: clean(l && l.who, 30) || 'Me', text: clean(l && l.text, 240) })).filter((l) => l.text);
+      if (lines.length < 2) fail('Add at least two lines to the conversation.');
+      for (const l of lines) { l.who = (await cleanText(c, u, l.who, 30)) || 'Me'; l.text = await cleanText(c, u, l.text, 240); }
+      out.lines = lines;
+    } else if (spec === 'items') {
+      const items = (Array.isArray(b.items) ? b.items : []).map((x) => clean(x, 80)).filter(Boolean).slice(0, 9);
+      if (items.length < 3) fail('A starter pack needs at least 3 items.');
+      out.items = []; for (const x of items) out.items.push(await cleanText(c, u, x, 80));
+    } else if (spec === 'pct') {
+      out[k] = Math.max(0, Math.min(100, Math.round(Number(b[k]) || 0)));
+    } else {
+      out[k] = await cleanText(c, u, b[k], spec);
+    }
+  }
+  const main = { story: 'text', expectation: 'reality', nobody: 'text', pov: 'text', starter: 'title', tracker: 'caption' }[format];
+  if (main && (!out[main] || out[main].length < 2)) fail('Fill in the funny part first 😄');
+  if (format === 'starter' && !out.title) fail('Give your starter pack a title.');
+  return out;
+}
+const authorOf = (c, r, anonymous) => anonymous
+  ? { id: null, name: 'Anonymous VA', rank_name: 'Member', anonymous: true }
+  : { id: r.author_id, name: r.author_name, rank_name: rankName(c, r.author_rank, r.author_type, r.author_role), creator: ROLES({ creator_roles: r.author_roles }), host: r.author_type === 'host', ambassador: (r.author_ambassador_until || 0) > now() };
+const AUTHOR = 'u.id AS author_id, u.name AS author_name, u.va_rank AS author_rank, u.account_type AS author_type, u.role AS author_role, u.creator_roles AS author_roles, u.ambassador_until AS author_ambassador_until';
+
+async function reactionCounts(c, ids, userId) {
+  if (!ids.length) return {};
+  const marks = ids.map(() => '?').join(',');
+  const rows = await c.db.all(`SELECT target_id, type, COUNT(*) n, SUM(user_id = ?) mine FROM comedy_reactions WHERE target_id IN (${marks}) GROUP BY target_id, type`, userId, ...ids);
+  const out = {};
+  for (const r of rows) { const o = (out[r.target_id] ||= { counts: {}, mine: null }); o.counts[r.type] = r.n; if (r.mine) o.mine = r.type; }
+  return out;
+}
+const TARGETS = { post: ['comedy_posts', 'user_id'], article: ['comedy_articles', 'author_id'], episode: ['podcast_episodes', 'created_by'] };
+async function findTarget(c, id) {
+  for (const [kind, [table, owner]] of Object.entries(TARGETS)) {
+    const where = kind === 'post' ? 'removed = 0' : "status = 'published'";
+    const r = await c.db.first(`SELECT id, ${owner} AS owner FROM ${table} WHERE id = ? AND ${where}`, id);
+    if (r) return { kind, table, owner: r.owner, id: r.id };
+  }
+  fail('Not found', 404);
+}
+const EMBED_HOSTS = /^https:\/\/(www\.)?(youtube\.com|youtu\.be|open\.spotify\.com|soundcloud\.com|on\.soundcloud\.com|podcasters\.spotify\.com|anchor\.fm)\//i;
+
+export const COMEDY_ROUTES = {
+  // ───────── Laugh Feed ─────────
+  async 'GET comedy/feed'(c) {
+    const u = needActive(c); const q = c.query;
+    const before = Number(q.before) || now() + 1;
+    const where = ['p.removed = 0', 'p.ts < ?']; const args = [before];
+    if (Object.prototype.hasOwnProperty.call(FORMATS, q.format || '')) { where.push('p.format = ?'); args.push(q.format); }
+    if (q.prompt) { where.push('p.prompt_id = ?'); args.push(clean(q.prompt, 40)); }
+    if (q.stories) where.push('p.podcast_ok = 1');
+    const order = q.sort === 'top' ? 'p.laughs DESC, p.ts DESC' : 'p.ts DESC';
+    if (q.sort === 'top') { where.push('p.ts > ?'); args.push(now() - WEEK); }
+    const rows = await c.db.all(`SELECT p.*, ${AUTHOR} FROM comedy_posts p JOIN users u ON u.id = p.user_id WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT 20`, ...args);
+    const rx = await reactionCounts(c, rows.map((r) => r.id), u.id);
+    return { formats: Object.fromEntries(Object.entries(FORMATS).map(([k, v]) => [k, v.label])),
+      posts: rows.map((r) => ({ id: r.id, ts: r.ts, format: r.format, body: pj(r.body, {}), tags: r.tags ? r.tags.split(' ') : [], laughs: r.laughs, comments: r.comments,
+        featured: !!r.featured, podcast_ok: !!r.podcast_ok, prompt_id: r.prompt_id, mine: r.user_id === u.id, author: authorOf(c, r, r.anonymous),
+        reactions: rx[r.id]?.counts || {}, my_reaction: rx[r.id]?.mine || null })),
+      next: q.sort !== 'top' && rows.length === 20 ? rows[rows.length - 1].ts : null };
+  },
+  async 'POST comedy/post'(c) {
+    const u = needActive(c); await rate(c, 'cpost:' + u.id, 20, 3600);
+    const format = Object.prototype.hasOwnProperty.call(FORMATS, c.body.format || '') ? c.body.format : fail('Pick a format.');
+    await guard(c, u, JSON.stringify(c.body.body || ''));
+    const body = await cleanBody(c, u, format, c.body.body);
+    const tags = [...new Set((JSON.stringify(body).match(/#[\p{L}\p{N}_]{2,30}/gu) || []).map((t) => t.slice(1).toLowerCase()))].slice(0, 6).join(' ');
+    const prompt = c.body.prompt_id ? await c.db.first('SELECT id FROM comedy_prompts WHERE id = ?', clean(c.body.prompt_id, 40)) : null;
+    const p = await c.db.insert('comedy_posts', { ts: now(), user_id: u.id, format, body, tags, prompt_id: prompt?.id || null, anonymous: !!c.body.anonymous, podcast_ok: !!c.body.podcast_ok,
+      laughs: 0, comments: 0, featured: 0, removed: 0 });
+    return { id: p.id };
+  },
+  async 'POST comedy/react'(c) {
+    const u = needActive(c); await rate(c, 'creact:' + u.id, 300, 3600);
+    const t = await findTarget(c, clean(c.body.id, 60));
+    const type = REACTS.includes(c.body.type) ? c.body.type : 'tawa';
+    const had = await c.db.first('SELECT type FROM comedy_reactions WHERE target_id = ? AND user_id = ?', t.id, u.id);
+    if (had && had.type === type) {
+      await c.db.batch([c.db.stmt('DELETE FROM comedy_reactions WHERE target_id = ? AND user_id = ?', t.id, u.id), c.db.stmt(`UPDATE ${t.table} SET laughs = MAX(0, laughs - 1) WHERE id = ?`, t.id)]);
+    } else if (had) await c.db.run('UPDATE comedy_reactions SET type = ?, ts = ? WHERE target_id = ? AND user_id = ?', type, now(), t.id, u.id);
+    else {
+      await c.db.batch([c.db.insertStmt('comedy_reactions', { target_id: t.id, user_id: u.id, type, ts: now() }), c.db.stmt(`UPDATE ${t.table} SET laughs = laughs + 1 WHERE id = ?`, t.id)]);
+      await notify(c, t.owner, 'comedy', `${u.name} laughed at your ${t.kind} 😂`, '/comedy.html#' + t.id);
+    }
+    const counts = Object.fromEntries((await c.db.all('SELECT type, COUNT(*) n FROM comedy_reactions WHERE target_id = ? GROUP BY type', t.id)).map((r) => [r.type, r.n]));
+    return { reactions: counts, my_reaction: had && had.type === type ? null : type };
+  },
+  async 'GET comedy/comments'(c) {
+    needActive(c);
+    const rows = await c.db.all(`SELECT cm.id, cm.ts, cm.text, ${AUTHOR} FROM comedy_comments cm JOIN users u ON u.id = cm.user_id WHERE cm.target_id = ? AND cm.removed = 0 ORDER BY cm.ts LIMIT 200`, clean(c.query.id, 60));
+    return { comments: rows.map((r) => ({ id: r.id, ts: r.ts, text: r.text, author: authorOf(c, r, false) })) };
+  },
+  async 'POST comedy/comment'(c) {
+    const u = needActive(c); await rate(c, 'ccmt:' + u.id, 60, 3600);
+    const t = await findTarget(c, clean(c.body.id, 60));
+    await guard(c, u, c.body.text);
+    const text = await cleanText(c, u, c.body.text, 800); if (!text) fail('Write something funny first.');
+    await c.db.batch([c.db.insertStmt('comedy_comments', { id: uid(), target_id: t.id, ts: now(), user_id: u.id, text, removed: 0 }), c.db.stmt(`UPDATE ${t.table} SET comments = comments + 1 WHERE id = ?`, t.id)]);
+    await notify(c, t.owner, 'comedy', `${u.name} commented on your ${t.kind}: "${text.slice(0, 60)}"`, '/comedy.html#' + t.id);
+    return { ok: true };
+  },
+  async 'POST comedy/remove'(c) {
+    const u = needActive(c); const id = clean(c.body.id, 60);
+    const p = await c.db.first('SELECT id, user_id FROM comedy_posts WHERE id = ?', id);
+    const a = !p && (await c.db.first('SELECT id, author_id AS user_id FROM comedy_articles WHERE id = ?', id));
+    const cm = !p && !a && (await c.db.first('SELECT id, user_id, target_id FROM comedy_comments WHERE id = ?', id));
+    const row = p || a || cm || fail('Not found', 404);
+    if (row.user_id !== u.id && !STAFF.includes(u.role)) fail('Not yours.', 403);
+    if (p) await c.db.update('comedy_posts', id, { removed: 1 });
+    if (a) await c.db.update('comedy_articles', id, { status: 'removed' });
+    if (cm) await c.db.update('comedy_comments', id, { removed: 1 });
+    if (row.user_id !== u.id) await audit(c, 'comedy_remove', id, '');
+    return { ok: true };
+  },
+  async 'POST comedy/report'(c) { // goes to Ops → Wed · Escalations (no automatic penalty)
+    const u = needActive(c); await rate(c, 'creport:' + u.id, 20, 3600);
+    const id = clean(c.body.id, 60);
+    const p = await c.db.first('SELECT user_id, body AS text FROM comedy_posts WHERE id = ?', id)
+      || await c.db.first('SELECT author_id AS user_id, title AS text FROM comedy_articles WHERE id = ?', id)
+      || await c.db.first('SELECT user_id, text FROM comedy_comments WHERE id = ?', id) || fail('Not found', 404);
+    const r = await c.db.run('INSERT OR IGNORE INTO votes (id, ts, user_id, target_type, target_id, value) VALUES (?,?,?,?,?,?)', uid(), now(), u.id, 'comedy_report', id, 1);
+    if (!r.meta.changes) return { ok: true, already: true };
+    const reason = clean(c.body.reason, 200) || 'Reported';
+    await c.db.insert('escalation_logs', { ts: now(), user_id: p.user_id, rule: 'comedy_report', severity: 'medium', points: 0, action: 'review',
+      detail: `Circle Laughs ${id}: ${reason} · "${String(p.text).slice(0, 200)}"`, status: 'open' });
+    return { ok: true };
+  },
+  async 'GET comedy/prompts'(c) {
+    needActive(c);
+    const row = await c.db.first('SELECT p.id, p.text, p.host_id, u.name AS host_name FROM comedy_prompts p LEFT JOIN users u ON u.id = p.host_id AND u.account_type = \'host\' WHERE p.active = 1 ORDER BY p.ts DESC LIMIT 1');
+    const active = row && { id: row.id, text: row.text, by_host: row.host_name ? { id: row.host_id, name: row.host_name } : null };
+    const n = active ? (await c.db.first('SELECT COUNT(*) n FROM comedy_posts WHERE prompt_id = ? AND removed = 0', active.id)).n : 0;
+    return { active: active ? { ...active, entries: n } : null, past: await c.db.all('SELECT id, text FROM comedy_prompts WHERE active = 0 ORDER BY ts DESC LIMIT 10') };
+  },
+  async 'GET comedy/hall'(c) { // Hall of Fame: this week's funniest posts and creators
+    const u = needActive(c);
+    const top = await c.db.all(`SELECT p.*, ${AUTHOR} FROM comedy_posts p JOIN users u ON u.id = p.user_id WHERE p.removed = 0 AND u.account_type <> 'host' AND p.ts > ? ORDER BY p.laughs DESC, p.ts DESC LIMIT 5`, now() - WEEK);
+    const creators = await c.db.all(`SELECT u.id, u.name, u.va_rank, u.account_type, u.role, SUM(p.laughs) laughs, COUNT(*) posts FROM comedy_posts p JOIN users u ON u.id = p.user_id
+      WHERE p.removed = 0 AND p.anonymous = 0 AND u.account_type <> 'host' AND p.ts > ? GROUP BY u.id ORDER BY laughs DESC LIMIT 5`, now() - WEEK);
+    const rx = await reactionCounts(c, top.map((r) => r.id), u.id);
+    return { posts: top.map((r) => ({ id: r.id, ts: r.ts, format: r.format, body: pj(r.body, {}), laughs: r.laughs, comments: r.comments, author: authorOf(c, r, r.anonymous), reactions: rx[r.id]?.counts || {}, my_reaction: rx[r.id]?.mine || null, tags: [] })),
+      creators: creators.map((x) => ({ id: x.id, name: x.name, laughs: x.laughs, posts: x.posts, rank_name: rankName(c, x.va_rank, x.account_type, x.role) })) };
+  },
+
+  // ───────── Creators: comedians (podcast) and writers ─────────
+  async 'GET creators/me'(c) {
+    const u = needActive(c);
+    return { roles: ROLES(u), staff: STAFF.includes(u.role), applications: await c.db.all('SELECT id, ts, kind, stage_name, status FROM creator_applications WHERE user_id = ? ORDER BY ts DESC', u.id) };
+  },
+  async 'POST creators/apply'(c) {
+    const u = needActive(c); await rate(c, 'capply:' + u.id, 5, 86400);
+    const kind = ['comedian', 'writer', 'ambassador'].includes(c.body.kind) ? c.body.kind : fail('Choose what you are applying for.');
+    if (kind === 'ambassador' && (u.account_type !== 'va' || (u.ambassador_until || 0) > now())) fail(u.account_type !== 'va' ? 'Founding Ambassadors are VAs.' : "You're already a Founding Ambassador 🌟", 409);
+    if (ROLES(u).includes(kind)) fail(`You're already a Circle Laughs ${kind} 🎉`, 409);
+    if (await c.db.first("SELECT 1 FROM creator_applications WHERE user_id = ? AND kind = ? AND status = 'pending'", u.id, kind)) fail('Your application is already being reviewed.', 409);
+    await guard(c, u, [c.body.bio, c.body.pitch].join(' '));
+    const stage = clean(c.body.stage_name, 60) || u.name;
+    const bio = await cleanText(c, u, c.body.bio, 600); if (bio.length < 20) fail(kind === 'ambassador' ? 'Tell us why you want to help grow the circle (20+ characters).' : 'Tell us a bit about your comedy (20+ characters).');
+    const sample = clean(c.body.sample_url, 300); if (sample && !/^https:\/\//.test(sample)) fail('Sample links must start with https://');
+    await c.db.insert('creator_applications', { ts: now(), user_id: u.id, kind, stage_name: stage, bio, sample_url: sample, pitch: await cleanText(c, u, c.body.pitch, 1000), status: 'pending' });
+    return { ok: true };
+  },
+  async 'GET admin/creators'(c) {
+    need(c, STAFF);
+    return { applications: await c.db.all(`SELECT a.*, u.name, u.email FROM creator_applications a JOIN users u ON u.id = a.user_id ORDER BY a.status = 'pending' DESC, a.ts DESC LIMIT 100`) };
+  },
+  async 'POST admin/creators/review'(c) {
+    const s = need(c, STAFF);
+    const a = await c.db.first("SELECT * FROM creator_applications WHERE id = ? AND status = 'pending'", c.body.id) || fail('Already reviewed or not found.', 409);
+    const approve = !!c.body.approve;
+    // Claim the application first, so a double click or two reviewers at once can't apply the decision twice
+    const claim = await c.db.run("UPDATE creator_applications SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ? AND status = 'pending'", approve ? 'approved' : 'declined', s.id, now(), a.id);
+    if (!claim.meta.changes) fail('Already reviewed.', 409);
+    if (approve && a.kind === 'ambassador') {
+      const cap = cfgNum(c, 'ambassador_cap'), days = cfgNum(c, 'ambassador_days') || 90, t = now();
+      // One statement checks eligibility and the cap and grants the term, so concurrent approvals can't exceed the cap or stack days
+      const g = await c.db.run(`UPDATE users SET ambassador_until = ?, pro_until = MAX(pro_until, ?) + ?,
+        badges = CASE WHEN instr(badges, '"Founding Ambassador 🌟"') THEN badges ELSE json_insert(badges, '$[#]', 'Founding Ambassador 🌟') END
+        WHERE id = ? AND status = 'active' AND account_type = 'va' AND ambassador_until <= ?
+        AND (SELECT COUNT(*) FROM users WHERE ambassador_until > ? AND status = 'active' AND account_type = 'va') < ?`,
+        t + days * 864e5, t, days * 864e5, a.user_id, t, t, cap);
+      if (!g.meta.changes) {
+        const m = await c.db.first('SELECT status, account_type, ambassador_until FROM users WHERE id = ?', a.user_id);
+        const full = m && m.status === 'active' && m.account_type === 'va' && m.ambassador_until <= t;
+        await c.db.run('UPDATE creator_applications SET status = ?, reviewed_by = NULL, reviewed_at = NULL WHERE id = ?', full ? 'pending' : 'declined', a.id);
+        fail(full ? `The Founding Ambassador cap (${cap}) is full. Raise ambassador_cap in Settings first.`
+          : m && m.ambassador_until > t ? 'They are already a Founding Ambassador.' : 'This member is no longer an active, verified VA.', 409);
+      }
+      await notify(c, a.user_id, 'ambassador', `🌟 You're a Founding Ambassador! You have ${days} days of free Tier 2 · Circle Pro. Your playbook is ready.`, '/ambassador.html');
+      await audit(c, 'ambassador_approve', a.user_id, String(days));
+      return { ok: true };
+    }
+    if (approve) {
+      const u = await c.db.first('SELECT creator_roles, badges FROM users WHERE id = ?', a.user_id);
+      const roles = new Set(ROLES(u)); roles.add(a.kind);
+      const badges = pj(u.badges, []); const badge = a.kind === 'comedian' ? 'Circle Laughs Comedian 🎙️' : 'Circle Laughs Writer ✍️'; if (!badges.includes(badge)) badges.push(badge);
+      await c.db.update('users', a.user_id, { creator_roles: [...roles].join(','), badges });
+    }
+    await notify(c, a.user_id, 'comedy', approve ? `🎉 You're now a Circle Laughs ${a.kind}!` : `Your ${a.kind === 'ambassador' ? 'Founding Ambassador' : 'Circle Laughs ' + a.kind} application wasn't approved this time. You can apply again later.`, a.kind === 'ambassador' ? '/ambassador.html' : '/comedy.html#apply');
+    await audit(c, 'creator_' + (approve ? 'approve' : 'decline'), a.user_id, a.kind);
+    return { ok: true };
+  },
+  async 'POST admin/comedy/prompt'(c) {
+    need(c, STAFF);
+    const text = clean(c.body.text, 200); if (text.length < 5) fail('Write the prompt.');
+    await c.db.batch([c.db.stmt('UPDATE comedy_prompts SET active = 0 WHERE active = 1'), c.db.insertStmt('comedy_prompts', { id: uid(), ts: now(), text, active: 1 })]);
+    return { ok: true };
+  },
+  async 'POST admin/comedy/feature'(c) {
+    need(c, STAFF);
+    const id = clean(c.body.id, 60); const v = c.body.featured ? 1 : 0;
+    const r1 = await c.db.run('UPDATE comedy_posts SET featured = ? WHERE id = ?', v, id);
+    if (!r1.meta.changes) await c.db.run('UPDATE comedy_articles SET featured = ? WHERE id = ?', v, id);
+    return { ok: true };
+  },
+
+  // ───────── Circle Writers ─────────
+  async 'GET comedy/articles'(c) {
+    const u = needActive(c);
+    const rows = await c.db.all(`SELECT a.id, a.ts, a.title, substr(a.body, 1, 280) AS excerpt, a.laughs, a.comments, a.featured, ${AUTHOR} FROM comedy_articles a JOIN users u ON u.id = a.author_id
+      WHERE a.status = 'published' ORDER BY a.featured DESC, a.ts DESC LIMIT 50`);
+    return { can_write: isCreator(u, 'writer'), articles: rows.map((r) => ({ id: r.id, ts: r.ts, title: r.title, excerpt: r.excerpt, laughs: r.laughs, comments: r.comments, featured: !!r.featured, author: authorOf(c, r, false) })) };
+  },
+  async 'GET comedy/article'(c) {
+    const u = needActive(c);
+    const r = await c.db.first(`SELECT a.*, ${AUTHOR} FROM comedy_articles a JOIN users u ON u.id = a.author_id WHERE a.id = ? AND a.status = 'published'`, clean(c.query.id, 60)) || fail('Not found', 404);
+    const rx = await reactionCounts(c, [r.id], u.id);
+    return { article: { id: r.id, ts: r.ts, title: r.title, body: r.body, laughs: r.laughs, comments: r.comments, mine: r.author_id === u.id, author: authorOf(c, r, false), reactions: rx[r.id]?.counts || {}, my_reaction: rx[r.id]?.mine || null } };
+  },
+  async 'POST comedy/article'(c) {
+    const u = needActive(c);
+    if (!isCreator(u, 'writer')) fail("Circle Writers publishing is for approved Circle Laughs writers. Apply on the Podcast & creators tab.", 403);
+    await rate(c, 'carticle:' + u.id, 10, 86400);
+    await guard(c, u, [c.body.title, c.body.body].join(' '));
+    const title = await cleanText(c, u, c.body.title, 140); if (title.length < 4) fail('Add a title.');
+    const body = await cleanText(c, u, c.body.body, 12000); if (body.length < 200) fail('Columns need at least 200 characters.');
+    if (c.body.id) {
+      const r = await c.db.run("UPDATE comedy_articles SET title = ?, body = ? WHERE id = ? AND author_id = ? AND status = 'published'", title, body, c.body.id, u.id);
+      if (!r.meta.changes) fail('Not your column.', 403); return { id: c.body.id };
+    }
+    return { id: (await c.db.insert('comedy_articles', { ts: now(), author_id: u.id, title, body, status: 'published', laughs: 0, comments: 0, featured: 0 })).id };
+  },
+
+  // ───────── Circle Laughs Podcast ─────────
+  async 'GET podcast/episodes'(c) {
+    const u = needActive(c);
+    const rows = await c.db.all("SELECT * FROM podcast_episodes WHERE status = 'published' ORDER BY number DESC, ts DESC LIMIT 50");
+    const ids = [...new Set(rows.flatMap((e) => e.host_ids.split(',')).filter(Boolean))];
+    const people = ids.length ? await c.db.all(`SELECT id, name FROM users WHERE id IN (${ids.map(() => '?').join(',')}) AND account_type <> 'host'`, ...ids) : [];
+    const names = Object.fromEntries(people.map((x) => [x.id, x.name]));
+    const rx = await reactionCounts(c, rows.map((r) => r.id), u.id);
+    return { can_publish: isCreator(u, 'comedian'), episodes: rows.map((e) => ({ id: e.id, ts: e.ts, number: e.number, title: e.title, description: e.description, media_url: e.media_url,
+      hosts: e.host_ids.split(',').filter((id) => id && names[id]).map((id) => ({ id, name: names[id] })), laughs: e.laughs, comments: e.comments, reactions: rx[e.id]?.counts || {}, my_reaction: rx[e.id]?.mine || null })) };
+  },
+  async 'POST podcast/episode'(c) {
+    const u = needActive(c);
+    if (!isCreator(u, 'comedian')) fail('Publishing episodes is for approved Circle Laughs comedians.', 403);
+    await guard(c, u, c.body.description);
+    const title = await cleanText(c, u, c.body.title, 140); if (title.length < 4) fail('Add an episode title.');
+    const media = clean(c.body.media_url, 400);
+    if (!EMBED_HOSTS.test(media)) fail('Paste a YouTube, Spotify or SoundCloud link to the episode.');
+    const hosts = [...new Set([u.id, ...String(c.body.co_host_ids || '').split(',').map((x) => x.trim()).filter(Boolean)])].slice(0, 5);
+    for (const h of hosts.slice(1)) if (!(await c.db.first("SELECT 1 FROM users WHERE id = ? AND status = 'active' AND account_type <> 'host'", h))) fail('Unknown co-host id: ' + h);
+    const number = Number(c.body.number) || ((await c.db.first('SELECT MAX(number) n FROM podcast_episodes')).n || 0) + 1;
+    const ep = await c.db.insert('podcast_episodes', { ts: now(), number, title, description: await cleanText(c, u, c.body.description, 2000), media_url: media, host_ids: hosts.join(','), created_by: u.id, status: 'published', laughs: 0, comments: 0 });
+    return { id: ep.id, number };
+  },
+  async 'POST podcast/remove'(c) {
+    const u = needActive(c);
+    const e = await c.db.first('SELECT * FROM podcast_episodes WHERE id = ?', c.body.id) || fail('Not found', 404);
+    if (e.created_by !== u.id && !STAFF.includes(u.role)) fail('Not yours.', 403);
+    await c.db.update('podcast_episodes', e.id, { status: 'removed' });
+    return { ok: true };
+  },
+};

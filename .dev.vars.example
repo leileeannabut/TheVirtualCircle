@@ -1,0 +1,11 @@
+# Local testing only — never add DEV_MODE in Cloudflare.
+DEV_MODE=true
+PEPPER=dev-pepper-change-me
+PAYMONGO_WEBHOOK_SECRET=whsk_dev
+XENDIT_CALLBACK_TOKEN=xnd_dev
+# Points Google Drive at the local mock (node dev/mock-google.mjs). Only honoured when DEV_MODE=true.
+GOOGLE_CLIENT_ID=dev-client
+GOOGLE_CLIENT_SECRET=dev-secret
+GOOGLE_AUTH_URL=http://localhost:8790/auth
+GOOGLE_TOKEN_URL=http://localhost:8790/token
+GOOGLE_API_URL=http://localhost:8790

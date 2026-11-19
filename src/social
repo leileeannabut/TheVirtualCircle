@@ -1,0 +1,463 @@
+// Community layer: feed, profiles, connections, notifications, DMs, Circle BFF, learning + CMS, Pro, direct job posts.
+import { fail, now, uid, pj, clean, cfgNum, cfgJson, rate, audit } from './lib.js';
+import { screenText, heuristicScan } from './services.js';
+import { checkout } from './payments.js';
+import { need, needActive, cardUser, addBadge, dmId, STAFF } from './routes.js';
+
+// ── ranks, privileges, Pro ──
+export const isPro = (u) => !!u && (u.pro_until || 0) > now();
+export function can(c, u, priv) {
+  if (!u) return false;
+  if (STAFF.includes(u.role)) return true;
+  return (u.va_rank || 0) >= (cfgJson(c, 'rank_privileges', {})[priv] ?? 99);
+}
+function needPriv(c, priv, msg) {
+  const u = needActive(c);
+  if (!can(c, u, priv)) fail(msg || 'Your verification rank does not include this yet. Raise your rank from your dashboard.', 403);
+  return u;
+}
+export async function notify(c, userId, type, text, link = '') {
+  if (!userId || (c.user && userId === c.user.id)) return;
+  await c.db.insert('notifications', { ts: now(), user_id: userId, type, text: clean(text, 240), link, read: 0 });
+}
+const authorSql = 'u.id AS author_id, u.name AS author_name, u.va_rank AS author_rank, u.account_type AS author_type, u.role AS author_role, u.supporter_until AS author_supporter_until, u.ambassador_until AS author_ambassador_until, u.pro_until AS author_pro_until, u.hub AS author_hub, u.headline AS author_headline';
+const author = (r, c) => ({ id: r.author_id, name: r.author_name, rank: r.author_rank || 0, rank_name: rankName(c, r.author_rank, r.author_type, r.author_role), pro: (r.author_pro_until || 0) > now(), supporter: (r.author_supporter_until || 0) > now(), ambassador: (r.author_ambassador_until || 0) > now(), host: r.author_type === 'host', hub: r.author_hub, headline: r.author_headline });
+// Label shown next to a name: staff → Circle Team, clients → Verified Client, VAs → their verification rank.
+export const rankName = (c, r, type, role) => (role === 'host' || type === 'host') ? 'Circle Host · AI' : STAFF.includes(role) ? 'Circle Team' : type === 'client' ? ((r || 0) >= 1 ? 'Verified Client' : 'Client')
+  : cfgJson(c, 'rank_names', {})[String(r || 0)] || 'Member';
+
+// Who may DM whom: accepted connection, active BFF match, client unlock, job application, or the "dm_anyone" rank privilege.
+export async function canDm(c, a, b) {
+  const other = a === c.user.id ? b : a;
+  const q = await c.db.first(`SELECT
+    (SELECT 1 FROM connections WHERE status = 'accepted' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))) con,
+    (SELECT 1 FROM bff_matches WHERE status = 'active' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))) bff,
+    (SELECT 1 FROM matches_and_unlocks WHERE status = 'unlocked' AND ((client_id = ?1 AND va_id = ?2) OR (client_id = ?2 AND va_id = ?1))) unl,
+    (SELECT 1 FROM job_applications ja JOIN jobs j ON j.id = ja.job_id WHERE (ja.user_id = ?1 AND j.posted_by = ?2) OR (ja.user_id = ?2 AND j.posted_by = ?1)) app,
+    (SELECT 1 FROM users WHERE id = ?3 AND status = 'active') other_active,
+    (SELECT 1 FROM users WHERE id = ?3 AND account_type = 'host') other_host`, a, b, other);
+  if (q.other_host) return false; // Circle Hosts are AI and never take private conversations
+  if (q.con || q.bff || q.unl || q.app) return true;
+  return !!(q.other_active && can(c, c.user, 'dm_anyone'));
+}
+
+// ── Circle BFF: topics + automatic matching ──
+export const TOPICS = {
+  difficult_client: { label: 'Difficult or abusive client', re: /(yell|shout|rude|abusive|toxic|angry|scream|insult)\w*.{0,30}(client|boss)|(client|boss).{0,30}(yell|shout|rude|abusive|toxic|scream|insult)/i },
+  unpaid: { label: 'Unpaid or late payment', re: /(not|never|haven'?t|hasn'?t|didn'?t)( been| get| got)? paid|unpaid|late payment|withh[eo]ld|still waiting for (my )?(pay|salary|payment)/i },
+  burnout: { label: 'Burnout & exhaustion', re: /burn(ed|t)? ?out|exhausted|so tired|can'?t anymore|drained|pagod/i },
+  sleep: { label: 'Night-shift sleep problems', re: /can'?t sleep|insomnia|no sleep|sleep schedule|puyat|body clock/i },
+  first_client: { label: 'Landing my first client', re: /first client|no clients? yet|can'?t get hired|rejected again|no (job|work) yet/i },
+  scammed: { label: 'Got scammed', re: /(got|been|was) scammed|scammer|fake (job|client|agency)|lost (my )?money/i },
+  termination: { label: 'Lost a client / terminated', re: /(got |was )?(fired|terminated|let go|laid off)|contract ended|lost (my |a )?client/i },
+  imposter: { label: 'Imposter syndrome', re: /imposter|not good enough|feel like a fraud|doubt myself/i },
+  rates: { label: 'Raising my rates', re: /raise (my )?rates?|underpaid|negotiat|lowball/i },
+  isolation: { label: 'Loneliness & isolation', re: /lonely|so alone|isolated|no one to talk|walang kausap/i },
+  balance: { label: 'Family & work balance', re: /\b(kids|family|anak)\b.{0,40}(work|shift|client)|work.?life balance/i },
+};
+export const detectTopics = (text) => Object.entries(TOPICS).filter(([, t]) => t.re.test(text)).map(([id]) => id);
+
+async function autoMatch(c, user, topic, mode) {
+  const made = [];
+  const exists = (a, b) => c.db.first('SELECT 1 FROM bff_matches WHERE topic = ? AND ((a = ? AND b = ?) OR (a = ? AND b = ?))', topic, a, b, b, a);
+  const pick = (m) => c.db.first(`SELECT s.user_id, u.name FROM struggles s JOIN users u ON u.id = s.user_id
+    WHERE s.topic = ? AND s.mode = ? AND s.active = 1 AND s.user_id <> ? AND u.status = 'active'
+      AND NOT EXISTS (SELECT 1 FROM bff_matches x WHERE x.topic = s.topic AND ((x.a = s.user_id AND x.b = ?) OR (x.b = s.user_id AND x.a = ?)))
+    ORDER BY (u.hub = ?) DESC, u.va_rank DESC, (SELECT COUNT(*) FROM bff_matches y WHERE y.b = s.user_id AND y.status = 'active') ASC, s.ts ASC LIMIT 1`, topic, m, user.id, user.id, user.id, user.hub || '');
+  const label = TOPICS[topic].label;
+  const link = async (a, b, kind, otherName, selfName) => {
+    if (await exists(a, b)) return;
+    await c.db.insert('bff_matches', { ts: now(), a, b, topic, kind, status: 'active' });
+    const ch = encodeURIComponent(dmId(a, b));
+    const msg = kind === 'mentor' ? `found someone who has been through "${label}"` : `found someone going through "${label}" too`;
+    await c.db.insert('notifications', { ts: now(), user_id: a, type: 'bff', text: `Circle BFF ${msg}: ${kind === 'mentor' ? otherName : otherName}. Say hi 💛`, link: '/messages.html#' + ch, read: 0 });
+    await c.db.insert('notifications', { ts: now(), user_id: b, type: 'bff', text: `Circle BFF: ${selfName} ${kind === 'mentor' ? 'is going through' : 'is also going through'} "${label}". You can help each other 💛`, link: '/messages.html#' + ch, read: 0 });
+    made.push({ with: otherName, kind });
+  };
+  if (mode === 'going_through') {
+    const helper = await pick('been_through'); if (helper) await link(user.id, helper.user_id, 'mentor', helper.name, user.name);
+    const peer = await pick('going_through'); if (peer) await link(user.id, peer.user_id, 'peer', peer.name, user.name);
+  } else {
+    const seeker = await c.db.first(`SELECT s.user_id, u.name FROM struggles s JOIN users u ON u.id = s.user_id WHERE s.topic = ? AND s.mode = 'going_through' AND s.active = 1 AND s.user_id <> ? AND u.status = 'active'
+      AND NOT EXISTS (SELECT 1 FROM bff_matches x WHERE x.topic = s.topic AND x.a = s.user_id AND x.kind = 'mentor') ORDER BY s.ts ASC LIMIT 1`, topic, user.id);
+    if (seeker) await link(seeker.user_id, user.id, 'mentor', user.name, seeker.name);
+  }
+  return made;
+}
+
+// ── Learning helpers ──
+async function courseProgress(c, userId, courseId) {
+  return c.db.first(`SELECT (SELECT COUNT(*) FROM lessons WHERE course_id = ?1) total,
+    (SELECT COUNT(*) FROM lesson_progress WHERE user_id = ?2 AND course_id = ?1 AND passed = 1) passed`, courseId, userId);
+}
+const canAuthor = (c, u) => can(c, u, 'create_courses');
+function cleanSlides(x) { return (Array.isArray(x) ? x : []).slice(0, 40).map((s) => ({ title: clean(s.title, 120), body: clean(s.body, 2000).replace(/\\n/g, '\n') })).filter((s) => s.title || s.body); }
+function cleanQuiz(x) {
+  return (Array.isArray(x) ? x : []).slice(0, 30).map((q) => {
+    const choices = (Array.isArray(q.choices) ? q.choices : []).map((ch) => clean(ch, 200)).filter(Boolean).slice(0, 6);
+    return { q: clean(q.q, 300), choices, answer: Math.max(0, Math.min(choices.length - 1, Number(q.answer) || 0)), explain: clean(q.explain, 400) };
+  }).filter((q) => q.q && q.choices.length >= 2);
+}
+
+export const SOCIAL_ROUTES = {
+  // ───────── Feed ─────────
+  async 'GET feed'(c) {
+    const u = needActive(c); const q = c.query;
+    const before = Number(q.before) || now() + 1;
+    const filters = []; const args = [before];
+    if (q.hub) { filters.push('p.hub = ?'); args.push(clean(q.hub, 40)); }
+    if (q.tag) { filters.push("instr(' ' || p.tags || ' ', ' ' || ? || ' ') > 0"); args.push(clean(q.tag, 40).toLowerCase().replace(/^#/, '')); }
+    if (q.user) { filters.push('p.user_id = ?'); args.push(clean(q.user, 60)); }
+    if (q.kind) { filters.push('p.kind = ?'); args.push(clean(q.kind, 20)); }
+    const rows = await c.db.all(`SELECT p.*, ${authorSql}, r.type AS my_reaction FROM posts p JOIN users u ON u.id = p.user_id
+      LEFT JOIN reactions r ON r.post_id = p.id AND r.user_id = ? WHERE p.removed = 0 AND p.ts < ? ${filters.map((f) => 'AND ' + f).join(' ')}
+      ORDER BY p.ts DESC LIMIT 20`, u.id, ...args);
+    const boosted = !q.before && !q.user && !q.tag ? await c.db.all(`SELECT p.*, ${authorSql}, r.type AS my_reaction FROM posts p JOIN users u ON u.id = p.user_id
+      LEFT JOIN reactions r ON r.post_id = p.id AND r.user_id = ? WHERE p.removed = 0 AND p.boosted_until > ? ORDER BY random() LIMIT 1`, u.id, now()) : [];
+    const map = (p) => ({ id: p.id, ts: p.ts, kind: p.kind, text: p.text, hub: p.hub, tags: p.tags ? p.tags.split(' ') : [], reactions: p.reactions, comments: p.comments,
+      boosted: p.boosted_until > now(), my_reaction: p.my_reaction || null, mine: p.user_id === u.id, author: author(p, c) });
+    return { boosted: boosted.map(map), posts: rows.filter((p) => !boosted.some((b) => b.id === p.id)).map(map), next: rows.length === 20 ? rows[rows.length - 1].ts : null };
+  },
+  async 'POST feed/post'(c) {
+    const u = needPriv(c, 'post_feed'); await rate(c, 'post:' + u.id, 20, 3600);
+    if (u.muted_until > now()) fail('You are muted for 24 hours after a safety flag.', 403);
+    const kind = ['post', 'win', 'question', 'struggle', 'tip'].includes(c.body.kind) ? c.body.kind : 'post';
+    const text = clean(c.body.text, 3000).replace(/\\n/g, '\n'); if (text.length < 2) fail('Write something first.');
+    const s = await screenText(c, u, text);
+    const tags = [...new Set((s.text.match(/#[\p{L}\p{N}_]{2,30}/gu) || []).map((t) => t.slice(1).toLowerCase()))].slice(0, 8).join(' ');
+    const p = await c.db.insert('posts', { ts: now(), user_id: u.id, kind, text: s.text, hub: clean(c.body.hub, 40), tags, reactions: 0, comments: 0, boosted_until: 0, removed: 0 });
+    const topics = detectTopics(text);
+    return { id: p.id, flagged: s.flagged, action: s.action, bff_suggest: topics.map((t) => ({ id: t, label: TOPICS[t].label })) };
+  },
+  async 'POST feed/react'(c) {
+    const u = needActive(c);
+    const p = await c.db.first('SELECT id, user_id FROM posts WHERE id = ? AND removed = 0', c.body.post_id) || fail('Post not found', 404);
+    const type = ['glow', 'hug', 'haha', 'wow', 'salute'].includes(c.body.type) ? c.body.type : 'glow';
+    const had = await c.db.first('SELECT type FROM reactions WHERE post_id = ? AND user_id = ?', p.id, u.id);
+    if (had && had.type === type) {
+      await c.db.batch([c.db.stmt('DELETE FROM reactions WHERE post_id = ? AND user_id = ?', p.id, u.id), c.db.stmt('UPDATE posts SET reactions = reactions - 1 WHERE id = ?', p.id)]);
+      return { my_reaction: null, reactions: (await c.db.first('SELECT reactions FROM posts WHERE id = ?', p.id)).reactions };
+    }
+    if (had) await c.db.run('UPDATE reactions SET type = ?, ts = ? WHERE post_id = ? AND user_id = ?', type, now(), p.id, u.id);
+    else {
+      await c.db.batch([c.db.insertStmt('reactions', { post_id: p.id, user_id: u.id, type, ts: now() }), c.db.stmt('UPDATE posts SET reactions = reactions + 1 WHERE id = ?', p.id)]);
+      await notify(c, p.user_id, 'reaction', `${u.name} reacted to your post`, '/feed.html#' + p.id);
+    }
+    return { my_reaction: type, reactions: (await c.db.first('SELECT reactions FROM posts WHERE id = ?', p.id)).reactions };
+  },
+  async 'GET feed/comments'(c) {
+    needActive(c);
+    const rows = await c.db.all(`SELECT cm.id, cm.ts, cm.text, ${authorSql} FROM comments cm JOIN users u ON u.id = cm.user_id WHERE cm.post_id = ? ORDER BY cm.ts LIMIT 200`, clean(c.query.post_id, 60));
+    return { comments: rows.map((r) => ({ id: r.id, ts: r.ts, text: r.text, author: author(r, c) })) };
+  },
+  async 'POST feed/comment'(c) {
+    const u = needPriv(c, 'post_feed'); await rate(c, 'cmt:' + u.id, 60, 3600);
+    if (u.muted_until > now()) fail('You are muted for 24 hours after a safety flag.', 403);
+    const p = await c.db.first('SELECT id, user_id FROM posts WHERE id = ? AND removed = 0', c.body.post_id) || fail('Post not found', 404);
+    const text = clean(c.body.text, 1200); if (!text) fail('Write a comment first.');
+    const s = await screenText(c, u, text);
+    await c.db.batch([c.db.insertStmt('comments', { id: uid(), post_id: p.id, ts: now(), user_id: u.id, text: s.text }), c.db.stmt('UPDATE posts SET comments = comments + 1 WHERE id = ?', p.id)]);
+    await notify(c, p.user_id, 'comment', `${u.name} commented: "${s.text.slice(0, 80)}"`, '/feed.html#' + p.id);
+    return { ok: true, flagged: s.flagged };
+  },
+  async 'POST feed/remove'(c) {
+    const u = needActive(c);
+    const p = await c.db.first('SELECT * FROM posts WHERE id = ?', c.body.id) || fail('Post not found', 404);
+    if (p.user_id !== u.id && !STAFF.includes(u.role)) fail('Not your post.', 403);
+    await c.db.update('posts', p.id, { removed: 1 });
+    if (p.user_id !== u.id) await audit(c, 'post_remove', p.id, p.text.slice(0, 120));
+    return { ok: true };
+  },
+  async 'POST feed/boost'(c) {
+    const u = needActive(c);
+    const p = await c.db.first('SELECT * FROM posts WHERE id = ? AND user_id = ? AND removed = 0', c.body.post_id, u.id) || fail('You can only boost your own posts.', 404);
+    return checkout(c, { ref_type: 'boost', ref_id: p.id, amount: cfgNum(c, 'boost_fee_php'), description: 'Boost a post for 7 days', back: '/feed.html' });
+  },
+
+  // ───────── Profiles & connections ─────────
+  async 'GET profile'(c) {
+    const me = needActive(c); const id = clean(c.query.id, 60) || me.id;
+    const u = await c.db.first("SELECT * FROM users WHERE id = ? AND status IN ('active','kyc_review')", id) || fail('Member not found', 404);
+    const con = await c.db.first('SELECT * FROM connections WHERE (a = ? AND b = ?) OR (a = ? AND b = ?)', me.id, id, id, me.id);
+    const counts = await c.db.first(`SELECT (SELECT COUNT(*) FROM posts WHERE user_id = ?1 AND removed = 0) posts,
+      (SELECT COUNT(*) FROM connections WHERE status = 'accepted' AND (a = ?1 OR b = ?1)) connections`, id);
+    const certs = await c.db.all('SELECT ce.ts, co.title FROM certificates ce JOIN courses co ON co.id = ce.course_id WHERE ce.user_id = ? ORDER BY ce.ts DESC', id);
+    return { profile: { ...cardUser(u), rank_name: rankName(c, u.va_rank, u.account_type, u.role), joined: u.created_at, account_type: u.account_type, host: u.account_type === 'host', ambassador: (u.ambassador_until || 0) > now() },
+      counts, certificates: certs, me: id === me.id, can_dm: id !== me.id && (await canDm(c, me.id, id)),
+      connection: con ? { status: con.status, outgoing: con.a === me.id } : null };
+  },
+  async 'POST profile/headline'(c) {
+    const u = need(c);
+    await c.db.update('users', u.id, { headline: clean(c.body.headline, 120) });
+    return { ok: true };
+  },
+  async 'POST connect/request'(c) {
+    const u = needActive(c); await rate(c, 'con:' + u.id, 50, 86400);
+    const other = await c.db.first("SELECT id, name FROM users WHERE id = ? AND status = 'active'", c.body.user_id) || fail('Member not found', 404);
+    if (other.id === u.id) fail("That's you 🙂");
+    if (await c.db.first("SELECT 1 FROM users WHERE id = ? AND account_type = 'host'", other.id)) fail('Circle Hosts are AI helpers, so they can\'t connect. Connect with the VAs who reply to them!');
+    const back = await c.db.first('SELECT status FROM connections WHERE a = ? AND b = ?', other.id, u.id);
+    if (back) { // they already asked us: accept
+      await c.db.run("UPDATE connections SET status = 'accepted', ts = ? WHERE a = ? AND b = ?", now(), other.id, u.id);
+      await notify(c, other.id, 'connect', `${u.name} accepted your connection`, '/profile.html?id=' + u.id);
+      return { status: 'accepted' };
+    }
+    const r = await c.db.run("INSERT OR IGNORE INTO connections (a, b, status, ts) VALUES (?, ?, 'pending', ?)", u.id, other.id, now());
+    if (r.meta.changes) await notify(c, other.id, 'connect', `${u.name} wants to connect`, '/connections.html');
+    return { status: 'pending' };
+  },
+  async 'POST connect/respond'(c) {
+    const u = needActive(c);
+    const req = await c.db.first("SELECT * FROM connections WHERE a = ? AND b = ? AND status = 'pending'", c.body.user_id, u.id) || fail('Request not found', 404);
+    if (c.body.accept) {
+      await c.db.run("UPDATE connections SET status = 'accepted', ts = ? WHERE a = ? AND b = ?", now(), req.a, u.id);
+      await notify(c, req.a, 'connect', `${u.name} accepted your connection`, '/profile.html?id=' + u.id);
+    } else await c.db.run('DELETE FROM connections WHERE a = ? AND b = ?', req.a, u.id);
+    return { ok: true };
+  },
+  async 'POST connect/remove'(c) {
+    const u = needActive(c);
+    await c.db.run('DELETE FROM connections WHERE (a = ? AND b = ?) OR (a = ? AND b = ?)', u.id, c.body.user_id, c.body.user_id, u.id);
+    return { ok: true };
+  },
+  async 'GET connect/list'(c) {
+    const u = needActive(c);
+    const sel = `u.id, u.name, u.account_type, u.role, u.supporter_until, u.hub, u.tier, u.va_rank, u.headline, u.pro_until, u.skills, u.bio, u.rate, u.sim_score, u.badges, u.region, u.years_experience`;
+    const connections = await c.db.all(`SELECT ${sel} FROM connections x JOIN users u ON u.id = CASE WHEN x.a = ?1 THEN x.b ELSE x.a END WHERE x.status = 'accepted' AND (x.a = ?1 OR x.b = ?1) ORDER BY u.name`, u.id);
+    const incoming = await c.db.all(`SELECT ${sel} FROM connections x JOIN users u ON u.id = x.a WHERE x.b = ? AND x.status = 'pending' ORDER BY x.ts DESC`, u.id);
+    const suggestions = await c.db.all(`SELECT ${sel} FROM users u WHERE u.status = 'active' AND u.account_type <> 'host' AND u.id <> ?1
+      AND NOT EXISTS (SELECT 1 FROM connections x WHERE (x.a = ?1 AND x.b = u.id) OR (x.b = ?1 AND x.a = u.id))
+      ORDER BY (u.hub = ?2) DESC, (u.tier = ?3) DESC, u.va_rank DESC, u.last_seen DESC LIMIT 8`, u.id, u.hub || '', u.tier || '');
+    const card = (x) => ({ ...cardUser(x), rank_name: rankName(c, x.va_rank, x.account_type, x.role) });
+    return { connections: connections.map(card), incoming: incoming.map(card), suggestions: suggestions.map(card) };
+  },
+
+  // ───────── Notifications ─────────
+  async 'GET notifications'(c) {
+    const u = need(c);
+    const list = await c.db.all('SELECT id, ts, type, text, link, read FROM notifications WHERE user_id = ? ORDER BY ts DESC LIMIT 40', u.id);
+    const unread = (await c.db.first('SELECT COUNT(*) n FROM notifications WHERE user_id = ? AND read = 0', u.id)).n;
+    return { notifications: list, unread };
+  },
+  async 'POST notifications/read'(c) { const u = need(c); await c.db.run('UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0', u.id); return { ok: true }; },
+
+  // ───────── Direct messages ─────────
+  async 'GET dm/list'(c) {
+    const u = needActive(c);
+    const others = await c.db.all(`SELECT DISTINCT other, why FROM (
+        SELECT CASE WHEN a = ?1 THEN b ELSE a END other, 'connection' why FROM connections WHERE status = 'accepted' AND (a = ?1 OR b = ?1)
+        UNION ALL SELECT CASE WHEN a = ?1 THEN b ELSE a END, 'bff' FROM bff_matches WHERE status = 'active' AND (a = ?1 OR b = ?1)
+        UNION ALL SELECT CASE WHEN client_id = ?1 THEN va_id ELSE client_id END, 'client' FROM matches_and_unlocks WHERE status = 'unlocked' AND (client_id = ?1 OR va_id = ?1)
+        UNION ALL SELECT CASE WHEN ja.user_id = ?1 THEN j.posted_by ELSE ja.user_id END, 'job' FROM job_applications ja JOIN jobs j ON j.id = ja.job_id WHERE ja.user_id = ?1 OR j.posted_by = ?1
+        UNION ALL SELECT CASE WHEN substr(channel, 4, 36) = ?1 THEN substr(channel, 41) ELSE substr(channel, 4, 36) END, 'chat' FROM messages WHERE channel LIKE 'dm:%' AND instr(channel, ?1) > 0
+      ) WHERE other IS NOT NULL AND other <> ''`, u.id);
+    const seen = new Map(); for (const o of others) if (!seen.has(o.other)) seen.set(o.other, o.why);
+    const out = [];
+    for (const [other, why] of seen) {
+      const p = await c.db.first('SELECT id, name, va_rank, account_type, role FROM users WHERE id = ?', other); if (!p) continue;
+      const ch = dmId(u.id, other);
+      const last = await c.db.first('SELECT ts, text, user_id FROM messages WHERE channel = ? ORDER BY ts DESC LIMIT 1', ch);
+      out.push({ channel: ch, user: { id: p.id, name: p.name, rank_name: rankName(c, p.va_rank, p.account_type, p.role) }, why, last: last ? { ts: last.ts, text: last.text.slice(0, 90), mine: last.user_id === u.id } : null });
+    }
+    out.sort((x, y) => (y.last?.ts || 0) - (x.last?.ts || 0));
+    return { conversations: out };
+  },
+  async 'POST dm/open'(c) { // returns the channel if messaging is allowed
+    const u = needActive(c); const other = clean(c.body.user_id, 60);
+    if (!(await canDm(c, u.id, other))) fail('Connect first to send a message.', 403);
+    return { channel: dmId(u.id, other) };
+  },
+
+  // ───────── Circle BFF ─────────
+  async 'GET bff/me'(c) {
+    const u = needActive(c);
+    const mine = await c.db.all('SELECT topic, mode, note, active FROM struggles WHERE user_id = ? AND active = 1', u.id);
+    const matches = await c.db.all(`SELECT m.*, u.name, u.va_rank, u.account_type, u.role FROM bff_matches m JOIN users u ON u.id = CASE WHEN m.a = ?1 THEN m.b ELSE m.a END
+      WHERE (m.a = ?1 OR m.b = ?1) AND m.status = 'active' ORDER BY m.ts DESC`, u.id);
+    const counts = await c.db.all("SELECT topic, mode, COUNT(*) n FROM struggles WHERE active = 1 GROUP BY topic, mode");
+    return { topics: Object.entries(TOPICS).map(([id, t]) => ({ id, label: t.label, going: counts.find((x) => x.topic === id && x.mode === 'going_through')?.n || 0, been: counts.find((x) => x.topic === id && x.mode === 'been_through')?.n || 0 })),
+      mine, matches: matches.map((m) => ({ id: m.id, topic: m.topic, label: TOPICS[m.topic]?.label || m.topic, kind: m.kind, role: m.a === u.id ? 'seeker' : 'helper', with: { id: m.a === u.id ? m.b : m.a, name: m.name, rank_name: rankName(c, m.va_rank, m.account_type, m.role) }, channel: dmId(m.a, m.b) })) };
+  },
+  async 'POST bff/set'(c) {
+    const u = needActive(c);
+    const topic = Object.prototype.hasOwnProperty.call(TOPICS, c.body.topic || '') ? c.body.topic : fail('Pick a topic.');
+    const mode = c.body.mode === 'been_through' ? 'been_through' : 'going_through';
+    if (c.body.on === false) { await c.db.run('UPDATE struggles SET active = 0 WHERE user_id = ? AND topic = ? AND mode = ?', u.id, topic, mode); return { ok: true }; }
+    await c.db.run(`INSERT INTO struggles (id, user_id, topic, mode, note, ts, active) VALUES (?,?,?,?,?,?,1)
+      ON CONFLICT(user_id, topic, mode) DO UPDATE SET active = 1, note = excluded.note, ts = excluded.ts`, uid(), u.id, topic, mode, clean(c.body.note, 300), now());
+    const matched = await autoMatch(c, u, topic, mode);
+    return { ok: true, matched };
+  },
+  async 'POST bff/end'(c) {
+    const u = needActive(c);
+    await c.db.run("UPDATE bff_matches SET status = 'ended' WHERE id = ? AND (a = ? OR b = ?)", c.body.id, u.id, u.id);
+    return { ok: true };
+  },
+
+  // ───────── Learning ─────────
+  async 'GET learn/courses'(c) {
+    const u = needActive(c);
+    const rows = await c.db.all(`SELECT co.*, (SELECT COUNT(*) FROM lessons l WHERE l.course_id = co.id) lessons,
+      (SELECT COUNT(*) FROM lesson_progress p WHERE p.course_id = co.id AND p.user_id = ? AND p.passed = 1) passed,
+      (SELECT 1 FROM certificates ce WHERE ce.course_id = co.id AND ce.user_id = ?) certified
+      FROM courses co WHERE co.status = 'published' ORDER BY co.sort, co.created_at`, u.id, u.id);
+    return { courses: rows.map((r) => ({ id: r.id, title: r.title, summary: r.summary, level: r.level, pro: !!r.pro, locked: !!r.pro && !isPro(u), lessons: r.lessons, passed: r.passed, certified: !!r.certified })), pro: isPro(u) };
+  },
+  async 'GET learn/course'(c) {
+    const u = needActive(c);
+    const co = await c.db.first('SELECT * FROM courses WHERE id = ?', clean(c.query.id, 60)) || fail('Course not found', 404);
+    if (co.status !== 'published' && !canAuthor(c, u)) fail('Course not found', 404);
+    const lessons = await c.db.all(`SELECT l.id, l.title, l.position, l.simulator, p.score, p.passed FROM lessons l LEFT JOIN lesson_progress p ON p.lesson_id = l.id AND p.user_id = ?
+      WHERE l.course_id = ? ORDER BY l.position`, u.id, co.id);
+    return { course: { id: co.id, title: co.title, summary: co.summary, level: co.level, pro: !!co.pro, locked: !!co.pro && !isPro(u) }, lessons: lessons.map((l) => ({ ...l, passed: !!l.passed })) };
+  },
+  async 'GET learn/lesson'(c) {
+    const u = needActive(c);
+    const l = await c.db.first('SELECT l.*, co.pro, co.status FROM lessons l JOIN courses co ON co.id = l.course_id WHERE l.id = ?', clean(c.query.id, 80)) || fail('Lesson not found', 404);
+    if (l.status !== 'published' && !canAuthor(c, u)) fail('Lesson not found', 404);
+    if (l.pro && !isPro(u) && !canAuthor(c, u)) fail('This training material is part of Tier 2 · Circle Pro. Upgrade on the Membership page to unlock it.', 402);
+    return { lesson: { id: l.id, course_id: l.course_id, title: l.title, slides: pj(l.slides, []), simulator: l.simulator, pass_pct: l.pass_pct,
+      quiz: pj(l.quiz, []).map(({ q, choices }) => ({ q, choices })) } };
+  },
+  async 'POST learn/submit'(c) {
+    const u = needActive(c); await rate(c, 'quiz:' + u.id, 60, 3600);
+    const l = await c.db.first('SELECT l.*, co.title AS course_title, co.pro FROM lessons l JOIN courses co ON co.id = l.course_id WHERE l.id = ?', clean(c.body.lesson_id, 80)) || fail('Lesson not found', 404);
+    if (l.pro && !isPro(u) && !canAuthor(c, u)) fail('This training material is part of Tier 2 · Circle Pro.', 402);
+    const quiz = pj(l.quiz, []); const answers = Array.isArray(c.body.answers) ? c.body.answers : [];
+    const results = quiz.map((q, i) => ({ correct: Number(answers[i]) === q.answer, answer: q.answer, explain: q.explain }));
+    const score = quiz.length ? Math.round(100 * results.filter((r) => r.correct).length / quiz.length) : 100;
+    const passed = score >= l.pass_pct;
+    const prev = await c.db.first('SELECT score, passed FROM lesson_progress WHERE user_id = ? AND lesson_id = ?', u.id, l.id);
+    if (!prev || score > prev.score) await c.db.run('INSERT OR REPLACE INTO lesson_progress (user_id, lesson_id, course_id, score, passed, ts) VALUES (?,?,?,?,?,?)', u.id, l.id, l.course_id, score, passed || prev?.passed ? 1 : 0, now());
+    let certificate = null;
+    const pr = await courseProgress(c, u.id, l.course_id);
+    if (pr.total && pr.passed === pr.total) {
+      const r = await c.db.run('INSERT OR IGNORE INTO certificates (id, user_id, course_id, ts) VALUES (?,?,?,?)', uid(), u.id, l.course_id, now());
+      if (r.meta.changes) {
+        await addBadge(c, u.id, 'Certified: ' + l.course_title);
+        await c.db.insert('notifications', { ts: now(), user_id: u.id, type: 'certificate', text: `🎓 You earned your certificate for "${l.course_title}"`, link: '/learn.html#course=' + l.course_id, read: 0 });
+      }
+      certificate = (await c.db.first('SELECT id FROM certificates WHERE user_id = ? AND course_id = ?', u.id, l.course_id)).id;
+    }
+    return { score, passed, pass_pct: l.pass_pct, results, certificate, progress: pr };
+  },
+  async 'POST learn/simulator'(c) {
+    const u = needActive(c); await rate(c, 'simx:' + u.id, 60, 3600);
+    const sim = ['inbox', 'calendar', 'dataentry'].includes(c.body.sim) ? c.body.sim : fail('Unknown simulator');
+    const score = Math.max(0, Math.min(100, Math.round(Number(c.body.score) || 0)));
+    await c.db.insert('simulations', { ts: now(), user_id: u.id, scenario: 'sim:' + sim, transcript: clean(c.body.detail, 2000), score_comm: null, score_tech: score, score_crisis: null, overall: score, feedback: '' });
+    const avg = Math.round((await c.db.first('SELECT AVG(overall) a FROM simulations WHERE user_id = ?', u.id)).a);
+    await c.db.update('users', u.id, { sim_score: avg });
+    const badge = { inbox: 'Inbox Triage Pro', calendar: 'Time-Zone Wizard', dataentry: 'Data Accuracy Pro' }[sim];
+    if (score >= 85) await addBadge(c, u.id, badge);
+    return { score, average: avg, badge: score >= 85 ? badge : null };
+  },
+  async 'GET learn/certificate'(c) {
+    need(c);
+    const r = await c.db.first('SELECT ce.*, co.title, u.name FROM certificates ce JOIN courses co ON co.id = ce.course_id JOIN users u ON u.id = ce.user_id WHERE ce.id = ?', clean(c.query.id, 60)) || fail('Certificate not found', 404);
+    return { certificate: { id: r.id, name: r.name, course: r.title, ts: r.ts } };
+  },
+
+  // ───────── CMS (Senior VA rank or staff) ─────────
+  async 'GET cms/courses'(c) {
+    const u = needActive(c); if (!canAuthor(c, u)) fail('Course authoring unlocks at Senior VA rank.', 403);
+    const rows = await c.db.all(`SELECT co.*, (SELECT COUNT(*) FROM lessons l WHERE l.course_id = co.id) lessons FROM courses co
+      WHERE ? OR co.author_id = ? ORDER BY co.sort, co.created_at`, STAFF.includes(u.role) ? 1 : 0, u.id);
+    return { courses: rows.map((r) => ({ ...r, pro: !!r.pro })) };
+  },
+  async 'GET cms/lessons'(c) {
+    const u = needActive(c); if (!canAuthor(c, u)) fail('Not allowed', 403);
+    return { lessons: (await c.db.all('SELECT * FROM lessons WHERE course_id = ? ORDER BY position', clean(c.query.course_id, 60))).map((l) => ({ ...l, slides: pj(l.slides, []), quiz: pj(l.quiz, []) })) };
+  },
+  async 'POST cms/course'(c) {
+    const u = needActive(c); if (!canAuthor(c, u)) fail('Not allowed', 403);
+    const b = c.body; const title = clean(b.title, 140); if (title.length < 3) fail('Add a course title.');
+    const row = { title, summary: clean(b.summary, 400), level: ['Beginner', 'Intermediate', 'Advanced'].includes(b.level) ? b.level : 'Beginner',
+      pro: !!b.pro, status: b.status === 'published' && STAFF.includes(u.role) ? 'published' : b.status === 'published' ? 'review' : 'draft', sort: Number(b.sort) || 50 };
+    if (b.id) {
+      const co = await c.db.first('SELECT author_id FROM courses WHERE id = ?', b.id) || fail('Not found', 404);
+      if (co.author_id !== u.id && !STAFF.includes(u.role)) fail('Not your course.', 403);
+      await c.db.update('courses', b.id, row); return { id: b.id, status: row.status };
+    }
+    return { id: (await c.db.insert('courses', { ...row, author_id: u.id, created_at: now() })).id, status: row.status };
+  },
+  async 'POST cms/lesson'(c) {
+    const u = needActive(c); if (!canAuthor(c, u)) fail('Not allowed', 403);
+    const b = c.body;
+    const co = await c.db.first('SELECT author_id FROM courses WHERE id = ?', b.course_id) || fail('Course not found', 404);
+    if (co.author_id !== u.id && !STAFF.includes(u.role)) fail('Not your course.', 403);
+    const row = { course_id: b.course_id, title: clean(b.title, 140) || 'Untitled lesson', position: Number(b.position) || 1, slides: cleanSlides(b.slides), quiz: cleanQuiz(b.quiz),
+      pass_pct: Math.max(0, Math.min(100, Number(b.pass_pct) || 70)), simulator: ['inbox', 'calendar', 'dataentry'].includes(b.simulator) ? b.simulator : '' };
+    if (b.id) { await c.db.update('lessons', b.id, row); return { id: b.id }; }
+    return { id: (await c.db.insert('lessons', row)).id };
+  },
+  async 'POST cms/lesson/delete'(c) {
+    const u = needActive(c); if (!canAuthor(c, u)) fail('Not allowed', 403);
+    const l = await c.db.first('SELECT l.id, co.author_id FROM lessons l JOIN courses co ON co.id = l.course_id WHERE l.id = ?', c.body.id) || fail('Not found', 404);
+    if (l.author_id !== u.id && !STAFF.includes(u.role)) fail('Not your course.', 403);
+    await c.db.batch([c.db.stmt('DELETE FROM lessons WHERE id = ?', l.id), c.db.stmt('DELETE FROM lesson_progress WHERE lesson_id = ?', l.id)]);
+    return { ok: true };
+  },
+
+  // ───────── Tier 2 · Circle Pro ─────────
+  async 'GET pro/status'(c) {
+    const u = need(c);
+    return { pro: isPro(u), pro_until: u.pro_until || 0, price_php: cfgNum(c, 'pro_price_php'), free_ai_sims_per_day: cfgNum(c, 'free_ai_sims_per_day') };
+  },
+  async 'POST pro/subscribe'(c) {
+    needActive(c);
+    return checkout(c, { ref_type: 'pro', ref_id: c.user.id, amount: cfgNum(c, 'pro_price_php'), description: 'Tier 2 · Circle Pro membership (30 days)', back: '/pro.html?for=pro' });
+  },
+
+  // ───────── Direct job posts (clients pay, VAs apply free) ─────────
+  async 'POST jobs/create'(c) {
+    const u = needActive(c, ['client', 'recruiter', ...STAFF]);
+    const b = c.body; const title = clean(b.title, 140); if (title.length < 4) fail('Add a job title.');
+    const description = clean(b.description, 4000).replace(/\\n/g, '\n'); if (description.length < 40) fail('Describe the role (40+ characters).');
+    const scan = heuristicScan([title, b.rate, description].join(' '));
+    if (scan.rating === 'danger') { fail('This post looks like a scam pattern (' + scan.flags.join(', ') + '). Legit jobs never ask VAs to pay, use crypto, or move to Telegram.'); }
+    const id = uid();
+    await c.db.insert('jobs', { id, source_id: 'direct', source_url: '', title, company: clean(b.company, 120), location: clean(b.location, 120) || 'Remote', rate: clean(b.rate, 80),
+      tags: clean(b.tags, 300), posted_at: new Date().toISOString().slice(0, 10), ingested_at: now(), safety_rating: 'safe', safety_flags: '[]', hash: 'direct:' + id,
+      posted_by: u.id, status: 'pending_payment', description });
+    return checkout(c, { ref_type: 'job_post', ref_id: id, amount: cfgNum(c, 'job_post_fee_php'), description: 'Job post (30 days): ' + title, back: '/jobs.html' });
+  },
+  async 'GET jobs/board'(c) {
+    const u = needActive(c); const q = clean(c.query.q, 60);
+    const rows = await c.db.all(`SELECT j.*, (SELECT 1 FROM job_applications a WHERE a.job_id = j.id AND a.user_id = ?) applied,
+      (SELECT COUNT(*) FROM job_applications a WHERE a.job_id = j.id) applicants FROM jobs j
+      WHERE j.status = 'live' AND (? = '' OR instr(lower(j.title || ' ' || ifnull(j.company,'') || ' ' || ifnull(j.tags,'')), lower(?)) > 0)
+      ORDER BY (j.posted_by IS NOT NULL) DESC, j.ingested_at DESC LIMIT 100`, u.id, q, q);
+    return { jobs: rows.map((j) => ({ id: j.id, title: j.title, company: j.company, location: j.location, rate: j.rate, tags: j.tags, description: j.description, url: j.source_url,
+      direct: !!j.posted_by, mine: j.posted_by === u.id, applied: !!j.applied, applicants: j.posted_by === u.id ? j.applicants : undefined, safety: j.safety_rating, flags: pj(j.safety_flags, []) })) };
+  },
+  async 'POST jobs/apply'(c) {
+    const u = needPriv(c, 'apply_jobs'); await rate(c, 'apply:' + u.id, 30, 86400);
+    const j = await c.db.first("SELECT * FROM jobs WHERE id = ? AND status = 'live' AND posted_by IS NOT NULL", c.body.job_id) || fail('Job not found', 404);
+    if (j.posted_by === u.id) fail("You can't apply to your own job.");
+    const r = await c.db.run('INSERT OR IGNORE INTO job_applications (id, job_id, user_id, ts, note, status) VALUES (?,?,?,?,?,?)', uid(), j.id, u.id, now(), clean(c.body.note, 1500), 'applied');
+    if (!r.meta.changes) fail('You already applied.', 409);
+    await notify(c, j.posted_by, 'application', `${u.name} applied to "${j.title}"`, '/jobs.html#mine');
+    return { ok: true };
+  },
+  async 'GET jobs/applicants'(c) {
+    const u = needActive(c);
+    const j = await c.db.first('SELECT * FROM jobs WHERE id = ?', clean(c.query.job_id, 60)) || fail('Job not found', 404);
+    if (j.posted_by !== u.id && !STAFF.includes(u.role)) fail('Not your job.', 403);
+    const rows = await c.db.all('SELECT a.ts, a.note, a.status, u.* FROM job_applications a JOIN users u ON u.id = a.user_id WHERE a.job_id = ? ORDER BY (u.pro_until > ?) DESC, u.va_rank DESC, u.sim_score DESC', j.id, now());
+    return { applicants: rows.map((r) => ({ ...cardUser(r), rank_name: rankName(c, r.va_rank, r.account_type, r.role), note: r.note, applied_at: r.ts, channel: dmId(u.id, r.id) })) };
+  },
+  async 'GET jobs/mine'(c) {
+    const u = needActive(c);
+    return { jobs: await c.db.all('SELECT j.id, j.title, j.status, j.ingested_at, (SELECT COUNT(*) FROM job_applications a WHERE a.job_id = j.id) applicants FROM jobs j WHERE j.posted_by = ? ORDER BY j.ingested_at DESC', u.id) };
+  },
+};
+
+// Free plan: limited AI role-plays per day (Pro is unlimited). Called by Circle Bestie before starting a new scenario.
+export async function checkSimAllowance(c, u) {
+  if (isPro(u) || STAFF.includes(u.role)) return;
+  const start = new Date(); start.setUTCHours(-8, 0, 0, 0); // midnight Manila
+  if (start.getTime() > now()) start.setUTCDate(start.getUTCDate() - 1);
+  const n = (await c.db.first("SELECT COUNT(*) n FROM simulations WHERE user_id = ? AND ts >= ? AND scenario NOT LIKE 'sim:%'", u.id, start.getTime())).n;
+  if (n >= cfgNum(c, 'free_ai_sims_per_day')) fail(`You've used today's ${cfgNum(c, 'free_ai_sims_per_day')} free AI simulations. Circle Academy simulators and lessons are unlimited, or go Tier 2 · Circle Pro for unlimited AI role-play.`, 402);
+}

@@ -1,0 +1,29 @@
+// Circle Bestie role-play scenarios, plus offline fallbacks used when no Gemini key is configured.
+export const SCENARIOS = [
+  { id: 'angry-client', skill: 'Client Communication', title: 'The 3AM angry client', persona: 'Karen, a US e-commerce founder, furious that a promo email went out with the wrong discount code',
+    brief: 'A client discovers a costly mistake in a campaign you scheduled. Calm them, own the fix, and propose next steps.', opening: 'Are you kidding me?! 4,000 customers just got a 70% code instead of 7%. Who approved this?? I need answers NOW.' },
+  { id: 'calendar-chaos', skill: 'Executive Support', title: 'Double-booked CEO', persona: 'Mark, a busy SaaS CEO in Sydney who is curt and impatient',
+    brief: 'Your executive has three overlapping meetings across time zones and a flight. Prioritise and rebook with clear communication.', opening: "I just saw I have an investor call, a board prep and a flight all at 9am. Fix it. I'm boarding in 20." },
+  { id: 'shopify-down', skill: 'Technical Aptitude', title: 'Store checkout is down', persona: 'Priya, a UK skincare brand owner, non-technical and anxious',
+    brief: 'Checkout errors are blocking sales during a launch. Troubleshoot step by step and communicate status clearly.', opening: 'Customers are saying the checkout button just spins. We launched an hour ago. What do I do??' },
+  { id: 'data-leak', skill: 'Crisis Management', title: 'Spreadsheet shared publicly', persona: 'Daniel, an agency owner who just learned a client list was shared with "anyone with the link"',
+    brief: 'A file with client personal data was exposed. Contain it, assess, and advise on notification duties calmly.', opening: 'Someone just told me our client sheet with emails and phone numbers is public. Did you share this? What now?' },
+  { id: 'scope-creep', skill: 'Boundary Setting', title: 'Unpaid extra work', persona: 'Tom, a friendly but pushy real-estate coach who keeps adding tasks',
+    brief: 'The client asks for weekend work outside the agreed scope at no extra pay. Hold boundaries professionally while keeping the relationship.', opening: "Hey! Quick one, can you also run my Instagram this weekend? Shouldn't take long, and it's good exposure for you 😊" },
+  { id: 'cold-support', skill: 'Customer Support', title: 'Refund or chargeback', persona: 'Linda, a customer threatening a chargeback over a late order',
+    brief: "Handle an upset customer for your client's store, follow policy, and de-escalate.", opening: "My order is 2 weeks late. I want a full refund today or I'm disputing it with my bank." },
+];
+
+export function offlineReply(n) {
+  const lines = ['Okay… and how exactly will that fix it?', 'I need a timeline. When will this be done?', 'Fine. What do you need from me right now?', 'Alright, that helps. Anything else I should know?'];
+  return lines[Math.min(Math.floor(n / 2), lines.length - 1)] + ' (Offline practice mode: add GEMINI_API_KEY for live role-play.)';
+}
+
+export function offlineGrade(text) {
+  const t = text.toLowerCase(); const has = (re) => (re.test(t) ? 1 : 0);
+  const comm = Math.min(100, 50 + 15 * has(/sorry|apolog|understand|i hear/) + 15 * has(/will|i'll|plan|next step/) + 10 * has(/thank/) + 10 * has(/update|by \d|minutes|hour/));
+  const tech = Math.min(100, 50 + 20 * has(/check|test|log|settings|clear|cache|restart|backup/) + 20 * has(/step|first|then/) + 10 * has(/screenshot|record/));
+  const crisis = Math.min(100, 50 + 20 * has(/immediately|right now|first|contain|pause|revoke/) + 15 * has(/notify|inform|escalate/) + 15 * has(/prevent|going forward|checklist/));
+  return { communication: comm, technical: tech, crisis, overall: Math.round((comm + tech + crisis) / 3),
+    feedback: '• Scored with offline rules (add GEMINI_API_KEY for AI grading).\n• Acknowledge feelings, then give a concrete next step and a time.\n• Close with how you will prevent it next time.' };
+}

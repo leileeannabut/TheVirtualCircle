@@ -1,0 +1,149 @@
+# Deploying The Virtual Circle yourself, step by step
+
+This guide assumes no coding experience. You need a **GitHub** account, a **Cloudflare** account and a **Google** account, all on free plans. Budget about an hour the first time.
+
+---
+
+## Part A: Put the code in your own GitHub repository
+
+1. Sign in at **github.com**.
+2. Open your repository (for example `TheVirtualCircle`), or click **New** to create one. Keep it **Private** if you like; Cloudflare can still read it.
+3. If the repository has old files, delete them: open each file → **⋯ → Delete file → Commit changes**. You can also delete the repository (Settings → bottom of the page) and create a fresh one with the same name.
+4. Unzip `TheVirtualCircle` on your computer. Inside you'll see the folders `public`, `functions`, `src` and `dev`, plus files like `README.md`.
+5. In the repository, click **Add file → Upload files**. Drag in **the folders themselves** (`public`, `functions`, `src`, `dev`) and the loose files (`README.md`, `DEPLOY.md`, `EARNING.md`, `package.json`, `.gitignore`, `.dev.vars.example`).
+   - If `.gitignore` or `.dev.vars.example` don't show up, turn on "show hidden files" on your computer (Mac: Cmd+Shift+. in Finder; Windows: View → Hidden items). They're optional.
+   - **Never** upload a file named `.dev.vars` (without `.example`).
+6. Click **Commit changes**.
+7. Check: the repository's main page should list `functions/`, `public/`, `src/` and `dev/`, and inside `functions/api/` there should be a file named `[[path]].js`.
+
+> Prefer the command line? Run `git clone <your-repo-url>`, copy the files in, then `git add -A && git commit -m "The Virtual Circle" && git push`.
+
+---
+
+## Part B: Cloudflare (website, API and database)
+
+### B1. Create the database
+1. Sign in at **dash.cloudflare.com**.
+2. In the left menu: **Storage & Databases → D1 SQL Database → Create**.
+3. Name it `virtual-circle` and click **Create**. You don't need to add any tables; the site creates them itself.
+
+### B2. Create the website from your GitHub repository
+1. Left menu: **Workers & Pages → Create → Pages tab → Connect to Git**.
+2. Connect your GitHub account if asked, and choose the repository.
+3. Fill in the build settings exactly like this:
+   | Setting | Value |
+   |---|---|
+   | Production branch | `main` |
+   | Framework preset | **None** |
+   | Build command | *(leave empty)* |
+   | Build output directory | `public` |
+4. Click **Save and Deploy**. The first build takes about a minute. You'll get an address like `https://virtual-circle.pages.dev`.
+
+### B3. Connect the database to the website
+1. Open your Pages project → **Settings → Bindings → Add → D1 database**.
+2. Variable name: `DB` (capital letters). Database: `virtual-circle`. Save.
+
+### B4. Add your secret keys
+Open **Settings → Variables and Secrets → Add**. Choose type **Secret** for each one.
+
+| Name | What to put | Required? |
+|---|---|---|
+| `PEPPER` | A long random string of 40+ characters. Use a password manager's generator, or random.org/strings. Save a copy somewhere safe and **never change it**. | **Yes** |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | From Part C | Yes, for ID uploads |
+| `SEMAPHORE_KEY` | Your Semaphore SMS API key (semaphore.co) | Yes, for real sign-ups (see note) |
+| `GEMINI_API_KEY` | Free key from aistudio.google.com → Get API key | Optional (better AI practice clients and Circle Host replies; simple built-in answers are used without it) |
+| `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET` | From the PayMongo dashboard (Part E) | When you start charging |
+| `XENDIT_SECRET_KEY`, `XENDIT_CALLBACK_TOKEN` | From the Xendit dashboard (Part E) | For USD invoices and payouts |
+
+> **About SMS:** members receive their sign-up code by text. Semaphore is prepaid per message, so it's the one small running cost; check their current rates. Without `SEMAPHORE_KEY`, codes only appear in Cloudflare's logs (Pages project → Deployments → View details → Functions logs). That's fine for testing yourself, but not for real members.
+
+### B5. Redeploy
+Go to **Deployments**, click **⋯** next to the latest one, then **Retry deployment**. Secrets and bindings only take effect after a new deployment.
+
+Open your site. If it says *"Setup needed: add the D1 database binding"*, recheck B3 and redeploy.
+
+---
+
+## Part C: Google Drive for private paperwork (free)
+
+ID photos, selfies, proof-of-work files and BIR 2307 PDFs are saved in **your own Google Drive**.
+
+1. Go to **console.cloud.google.com** and sign in with the Google account that should hold the files.
+2. At the top, click the project picker → **New project**, name it `Virtual Circle`, and click **Create**. Make sure it's selected.
+3. **APIs & Services → Library**, search for **Google Drive API**, and click **Enable**.
+4. **APIs & Services → OAuth consent screen** (or *Google Auth Platform → Branding*):
+   - User type: **External**.
+   - App name `The Virtual Circle`, your email for support and developer contact. Save.
+   - **Data access / Scopes → Add scopes**: tick `.../auth/drive.file` ("See, edit, create and delete only the specific Google Drive files you use with this app"). Save.
+   - **Audience / Publishing status → Publish app → Confirm** so it says **In production**. This matters: in *Testing*, Google disconnects you every 7 days. `drive.file` doesn't require Google's review.
+5. **APIs & Services → Credentials → Create credentials → OAuth client ID**:
+   - Application type: **Web application**.
+   - Authorized redirect URIs → **Add URI**: `https://YOUR-SITE.pages.dev/api/oauth/google/callback` (use your real address from B2; add your custom domain too if you have one).
+   - Click **Create** and copy the **Client ID** and **Client secret**.
+6. Put them into Cloudflare as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (B4), then **Retry deployment** (B5).
+7. You'll click **Connect Google Drive** in Part D. Google may show "Google hasn't verified this app": click **Advanced → Go to The Virtual Circle**. It's your own app.
+
+---
+
+## Part D: Become the Founder
+
+1. Open your site → **Join**. Register as a **client** account (simplest for the owner) and enter the SMS code.
+2. Stop at the ID step for now; uploads open once Drive is connected.
+3. In Cloudflare, open **D1 → virtual-circle → Console**, paste the line below with your email, and click **Execute**:
+   ```sql
+   UPDATE users SET role = 'founder', status = 'active', va_rank = 4 WHERE email = 'you@example.com';
+   ```
+4. Refresh the site. You'll now see **More → Circle Ops**.
+5. **Circle Ops → Settings → Connect Google Drive**, sign in, and approve. You should see "Google Drive connected".
+6. Still in **Circle Ops → Settings**, set:
+   - `site_url`: your site address.
+   - `countdown_ends_at`: optional.
+   - `company_name`, `company_tin`, `company_address`: for BIR 2307.
+   - `crisis_resources`: **call and verify every number** before launch.
+
+Your team (GM, EA, Admin/IT, CPA): ask them to register, then change their role in **Circle Ops → People**.
+
+---
+
+## Part E: Taking payments (when you're ready)
+
+PayMongo and Xendit require a **registered business**: a DTI-registered sole proprietorship is the usual start, plus BIR registration so you can issue receipts and 2307s. Apply on their sites. Approval takes days to weeks.
+
+**PayMongo** (GCash, Maya, cards, in pesos):
+1. In the dashboard, open **Developers → API keys** and copy the secret key into `PAYMONGO_SECRET_KEY`.
+2. **Developers → Webhooks → Add**: URL `https://YOUR-SITE/api/webhooks/paymongo`, event `checkout_session.payment.paid`. Copy the webhook secret into `PAYMONGO_WEBHOOK_SECRET`.
+
+**Xendit** (USD invoices for squad retainers, GCash payouts to members):
+1. **Settings → API keys**: create a secret key and put it in `XENDIT_SECRET_KEY`.
+2. **Settings → Webhooks / Callbacks**: set the Invoice paid URL to `https://YOUR-SITE/api/webhooks/xendit` and copy the verification token into `XENDIT_CALLBACK_TOKEN`.
+
+Retry the deployment after adding keys. Until payments are configured, paid buttons show "Payments are not configured yet", and everything free keeps working.
+
+---
+
+## Part F: Updating the site later
+
+Any change you commit to GitHub (by uploading or editing files on github.com) is deployed by Cloudflare automatically within a minute or two. Database changes are applied automatically on the next visit, and existing data is kept.
+
+## Part G: Your first week after launch
+
+1. **Invite 5–10 trusted co-VAs first.** Approve their ID checks in **Circle Ops → KYC queue** and set each one's rank (proof of work for tenured VAs).
+2. **Start the Circle Hosts:** in **Circle Ops → Hosts**, set **Day 1** to your launch date and look over the first week of posts (edit or skip anything). The hosts are labeled AI helpers and start posting on their own; switch them off there any time. See [LAUNCH.md](LAUNCH.md).
+3. **Pick your first Founding Ambassadors:** ask your most helpful co-VAs to apply at **More → Founding Ambassadors**, then approve them in **Circle Ops → Creators**. Each gets 90 days of free Tier 2.
+4. **Seed the circle yourself too:** post a few real wins and questions on Circle Feed. Staff can also set the weekly Circle Laughs prompt; if nobody has set one that week, Punchline posts one on Monday.
+5. **Write one course** from your own experience in the **Circle Academy editor** (More menu), or edit the three starter courses.
+6. **Recruit** (use [RECRUITING.md](RECRUITING.md) for who to invite and what to say): Proven VAs to teach on **Circle Mentors** (they need Tier 2), PRC-licensed practitioners for **Circle Wellness** (verify their license in Circle Ops → People), and VA comedians and writers for **Circle Laughs** (approve them in Circle Ops → Creators).
+7. **Keep the Mon/Wed/Fri rhythm** in Circle Ops: Monday pulse, Wednesday escalations (reports, disputes, flags), Friday strategy (requests, refunds, squads).
+
+## Troubleshooting
+
+| You see | Fix |
+|---|---|
+| "Setup needed: add the D1 database binding" | B3, then redeploy |
+| "ID uploads open soon" | Circle Ops → Settings → Connect Google Drive (Part C) |
+| "Google Drive access was revoked or expired" | Publish the OAuth app to *In production* (C4), then Reconnect in Circle Ops |
+| No SMS arrives | Check `SEMAPHORE_KEY` and your Semaphore credit balance |
+| "Payments are not configured yet" | Part E |
+| Circle Hosts aren't posting | Circle Ops → Hosts: check they're switched on and Day 1 is set. They post when the site gets visits (any page), at most every 10 minutes |
+| A page looks old after an update | Hard refresh (Ctrl+Shift+R / Cmd+Shift+R) |
+| Anything else | Pages project → Deployments → latest → Functions logs |

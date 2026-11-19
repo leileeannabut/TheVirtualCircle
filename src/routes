@@ -1,0 +1,783 @@
+// All API routes. Each handler gets c = { env, db, cfg, user, ip, ua, body, query, token } and returns JSON data (or a Response).
+import { fail, now, uid, round2, pj, clean, isEmail, sha256, hmac, safeEqual, cfgNum, cfgJson, rate, audit, randHex, hashPw, verifyPw } from './lib.js';
+import { OFF_PLATFORM, penalize, screenText, scanText, gemini, sendSms } from './services.js';
+import { checkout, processPayment, runPayouts } from './payments.js';
+import { ingest } from './ingest.js';
+import { SCENARIOS, offlineReply, offlineGrade } from './scenarios.js';
+import { canDm, can, checkSimAllowance, rankName } from './social.js';
+import { needTeacher } from './membership.js';
+import { putFile, getFile, storageMode, driveConnectUrl, driveFinishConnect, driveDisconnect } from './storage.js';
+
+export const STAFF = ['founder', 'gm', 'ea', 'admin_it', 'moderator'];
+export const FINANCE = ['founder', 'gm', 'cpa'];
+const SUPER = ['founder', 'admin_it'];
+const SOURCING = ['recruiter', ...STAFF];
+const ROLES = ['va', 'client', 'recruiter', 'mentor', 'practitioner', 'moderator', 'founder', 'gm', 'ea', 'admin_it', 'cpa'];
+const STAGES = ['Ingested', 'KYC', 'Screened', 'Simulation', 'Client Interview', 'Placed'];
+const MAX_IMG = 5 * 1024 * 1024, IMG_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+// ── access helpers ──
+export function need(c, roles) {
+  if (!c.user) fail('Please sign in.', 401);
+  if (c.user.status === 'suspended') fail('Your account is suspended pending review.', 403);
+  if (roles && !roles.includes(c.user.role)) fail('You do not have access to this.', 403);
+  return c.user;
+}
+export function needActive(c, roles) {
+  const u = need(c, roles);
+  if (u.status !== 'active' && !STAFF.includes(u.role)) fail('Finish verification (OTP + KYC) to unlock this.', 403);
+  return u;
+}
+export const publicUser = (u) => u && ({
+  id: u.id, name: u.name, email: u.email, mobile: u.mobile, mobile_verified: !!u.mobile_verified, role: u.role, account_type: u.account_type, tier: u.tier,
+  status: u.status, region: u.region, hub: u.hub, skills: u.skills, bio: u.bio, rate: u.rate, sim_score: u.sim_score, badges: pj(u.badges, []),
+  founder_slot: u.founder_slot, referral_code: u.referral_code, tin: u.tin, address: u.address, payout_account: u.payout_account,
+  risk_points: u.risk_points, muted_until: u.muted_until, va_rank: u.va_rank || 0, pro: (u.pro_until || 0) > Date.now(), pro_until: u.pro_until || 0,
+  years_experience: u.years_experience || 0, headline: u.headline || '',
+  supporter: (u.supporter_until || 0) > Date.now(), supporter_until: u.supporter_until || 0, support_total: u.support_total || 0,
+});
+export const cardUser = (u) => ({ id: u.id, name: u.name, tier: u.tier, region: u.region, hub: u.hub, skills: u.skills, bio: u.bio, rate: u.rate, sim_score: u.sim_score, badges: pj(u.badges, []),
+  va_rank: u.va_rank || 0, pro: (u.pro_until || 0) > Date.now(), supporter: (u.supporter_until || 0) > Date.now(), headline: u.headline || '', years_experience: u.years_experience || 0 });
+export async function addBadge(c, userId, badge) {
+  const u = await c.db.first('SELECT badges FROM users WHERE id = ?', userId); if (!u) return;
+  const list = pj(u.badges, []); if (!list.includes(badge)) { list.push(badge); await c.db.update('users', userId, { badges: list }); }
+}
+export const dmId = (a, b) => 'dm:' + [a, b].sort().join(':');
+async function dmAllowed(c, ch) {
+  const ids = ch.slice(3).split(':');
+  if (!ids.includes(c.user.id) && !STAFF.includes(c.user.role)) fail('Not your conversation.', 403);
+  if (!(await canDm(c, ids[0], ids[1]))) fail('This conversation is not open yet. Connect first, or wait for a match.', 403);
+}
+async function vote(c, type, id, value) {
+  const r = await c.db.run('INSERT OR IGNORE INTO votes (id, ts, user_id, target_type, target_id, value) VALUES (?,?,?,?,?,?)', uid(), now(), c.user.id, type, id, value);
+  return r.meta.changes > 0;
+}
+async function upsertCompany(c, name, website, flags, addReports, verified) {
+  const key = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  await c.db.run('INSERT OR IGNORE INTO companies (id, name, name_key, website, updated_at) VALUES (?,?,?,?,?)', uid(), name, key, website || '', now());
+  const co = await c.db.first('SELECT * FROM companies WHERE name_key = ?', key);
+  const f = pj(co.flags, []); (flags || []).forEach((x) => { if (!f.includes(x)) f.push(x); });
+  const patch = { flags: f.slice(0, 12), reports: co.reports + (addReports || 0), updated_at: now() };
+  if (website && !co.website) patch.website = website;
+  if (verified) patch.status = 'verified_risk';
+  Object.assign(co, patch);
+  await scoreCompany(c, co, patch);
+  return co;
+}
+async function scoreCompany(c, co, patch = {}) {
+  const v = await c.db.first("SELECT COUNT(*) n FROM scam_reports WHERE status = 'verified' AND lower(company) = lower(?)", co.name);
+  const score = Math.min(100, co.reports * 12 + co.upvotes * 3 + v.n * 20 + pj(co.flags, []).length * 4);
+  const status = co.status === 'verified_risk' ? co.status : score >= 70 ? 'high_risk' : score >= 35 ? 'elevated' : 'watch';
+  Object.assign(co, { risk_score: score, status });
+  await c.db.update('companies', co.id, { ...patch, risk_score: score, status });
+}
+async function sendOtp(c, u) {
+  const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1e6).padStart(6, '0');
+  await c.db.run('INSERT OR REPLACE INTO otps (user_id, code_hash, tries, expires_at) VALUES (?,?,0,?)', u.id, await sha256(code + u.id), now() + 300000);
+  await sendSms(c, u.mobile, `Your Virtual Circle code is ${code}. It expires in 5 minutes. Never share it.`);
+}
+const maskLicense = (l) => (String(l).length > 3 ? '•••' + String(l).slice(-3) : l);
+const strip = (o, ...keys) => { const x = { ...o }; keys.forEach((k) => delete x[k]); return x; };
+
+export const ROUTES = {
+  // ───────── Public ─────────
+  async 'GET config'(c) {
+    const t = await c.db.first(`SELECT SUM(founder_slot IS NOT NULL AND tier = 'newbie') nb, SUM(founder_slot IS NOT NULL AND tier = 'seasoned') sn,
+      SUM(status = 'active' AND account_type <> 'host') members FROM users`);
+    return {
+      tagline: c.cfg.tagline, newbie_cap: cfgNum(c, 'founders_newbie_cap'), seasoned_cap: cfgNum(c, 'founders_seasoned_cap'),
+      newbie_remaining: Math.max(0, cfgNum(c, 'founders_newbie_cap') - (t.nb || 0)), seasoned_remaining: Math.max(0, cfgNum(c, 'founders_seasoned_cap') - (t.sn || 0)),
+      countdown_ends_at: c.cfg.countdown_ends_at, members: t.members || 0,
+      hubs: await c.db.all('SELECT id, name, region, kind FROM channels ORDER BY sort'),
+      crisis_resources: cfgJson(c, 'crisis_resources', []), studio_tiers: cfgJson(c, 'studio_tiers', []), squad_tiers: cfgJson(c, 'squad_tiers', []),
+      unlock_fee_php: cfgNum(c, 'unlock_fee_php'), job_post_fee_php: cfgNum(c, 'job_post_fee_php'), boost_fee_php: cfgNum(c, 'boost_fee_php'), pro_price_php: cfgNum(c, 'pro_price_php'), comedy_rules: c.cfg.comedy_rules || '', supporter_min_php: cfgNum(c, 'supporter_min_php'), consult_platform_pct: cfgNum(c, 'consult_platform_pct'),
+      mentor_split_min: cfgNum(c, 'mentor_split_min'), mentor_split_max: cfgNum(c, 'mentor_split_max'), ai: !!c.env.GEMINI_API_KEY,
+    };
+  },
+
+  // ───────── Auth ─────────
+  async 'POST auth/register'(c) {
+    await rate(c, 'reg:' + c.ip, 5, 600);
+    const b = c.body;
+    const email = clean(b.email, 120).toLowerCase(), name = clean(b.name, 60);
+    if (/circle\s*host|\(\s*ai\s*\)|🤖/i.test(name)) fail('Please use your real name. "Circle Host" and "(AI)" are reserved for the labeled AI hosts.');
+    let mobile = clean(b.mobile, 20).replace(/[\s-]/g, '');
+    if (!isEmail(email)) fail('Enter a valid email.');
+    if (!/^(\+63|0)9\d{9}$/.test(mobile)) fail('Enter a valid PH mobile (09XXXXXXXXX).');
+    if (mobile.startsWith('0')) mobile = '+63' + mobile.slice(1);
+    if (name.length < 2) fail('Enter your name.');
+    if (String(b.password || '').length < 10) fail('Password must be at least 10 characters.');
+    if (!b.consent) fail('Please agree to the Privacy Notice (RA 10173).');
+    if (!b.adult) fail('The Virtual Circle is for adults (18+).');
+    if (!(await turnstileOk(c, b.turnstile))) fail('Verification failed. Try again.');
+    const type = b.account_type === 'client' ? 'client' : 'va';
+    const tier = type === 'va' ? (['newbie', 'seasoned'].includes(b.tier) ? b.tier : fail('Choose Newbie or Seasoned.')) : '';
+    if (await c.db.first('SELECT 1 FROM users WHERE email = ? OR mobile = ?', email, mobile)) fail('That email or mobile is already registered.', 409);
+    const ref = clean(b.ref, 12).toUpperCase();
+    const referrer = ref ? await c.db.first("SELECT 1 FROM users WHERE referral_code = ? AND account_type <> 'host'", ref) : null;
+    const fp = b.fingerprint ? await sha256(String(b.fingerprint)) : '';
+    const u = { id: uid(), email, name, mobile, mobile_verified: 0, pw_hash: await hashPw(b.password), role: type, account_type: type, tier,
+      status: 'pending_otp', region: clean(b.region, 20), hub: clean(b.hub, 40), badges: '[]', risk_points: 0, muted_until: 0,
+      referral_code: randHex(3).toUpperCase(), referred_by: referrer ? ref : '', fingerprint: fp, consent_at: now(), created_at: now() };
+    try { await c.db.insert('users', u); } catch (e) { if (/UNIQUE/.test(e.message)) fail('That email or mobile is already registered.', 409); throw e; }
+    if (fp) {
+      const dup = await c.db.first('SELECT COUNT(*) n FROM users WHERE fingerprint = ? AND id <> ?', fp, u.id);
+      if (dup.n) await penalize(c, u, 'dup_fingerprint', `${dup.n} other account(s) share this device`, 'high');
+    }
+    await sendOtp(c, u);
+    c.user = u; await audit(c, 'register', u.id, `${type} ${tier}`);
+    return { ok: true, next: 'otp', _session: u.id };
+  },
+  async 'POST auth/login'(c) {
+    await rate(c, 'login:' + c.ip, 10, 300);
+    const u = await c.db.first('SELECT id, pw_hash, status FROM users WHERE email = ?', clean(c.body.email, 120).toLowerCase());
+    // Verify even when the email is unknown so timing does not reveal registered emails
+    const ok = await verifyPw(String(c.body.password || ''), u ? u.pw_hash : 'AAAAAAAAAAAAAAAAAAAAAA==$x');
+    if (!u || !ok) fail('Wrong email or password.', 401);
+    if (u.status === 'banned') fail('This account has been closed for violating community safety rules.', 403);
+    return { ok: true, _session: u.id };
+  },
+  async 'POST auth/logout'(c) {
+    if (c.token) await c.db.run('DELETE FROM sessions WHERE token_hash = ?', await sha256(c.token));
+    return { ok: true, _clearSession: true };
+  },
+  async 'GET me'(c) {
+    if (!c.user) return { user: null };
+    const [k, m, p] = await Promise.all([
+      c.db.first('SELECT status, note FROM kyc WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', c.user.id),
+      c.db.first('SELECT 1 FROM mentors WHERE user_id = ?', c.user.id),
+      c.db.first('SELECT verified FROM practitioners WHERE user_id = ?', c.user.id)]);
+    return { user: { ...publicUser(c.user), rank_name: rankName(c, c.user.va_rank, c.user.account_type, c.user.role) }, kyc: k || null, mentor: !!m, practitioner: !!(p && p.verified) };
+  },
+  async 'POST otp/send'(c) {
+    const u = need(c); if (u.mobile_verified) return { ok: true };
+    await rate(c, 'otp:' + u.id, 3, 300); await sendOtp(c, u); return { ok: true };
+  },
+  async 'POST otp/verify'(c) {
+    const u = need(c);
+    const o = await c.db.first('SELECT * FROM otps WHERE user_id = ?', u.id);
+    if (!o || o.expires_at < now()) fail('Code expired. Tap resend.');
+    if (o.tries >= 5) { await c.db.run('DELETE FROM otps WHERE user_id = ?', u.id); fail('Too many wrong codes. Tap resend.', 429); }
+    if (!safeEqual(await sha256(clean(c.body.code, 6) + u.id), o.code_hash)) { await c.db.run('UPDATE otps SET tries = tries + 1 WHERE user_id = ?', u.id); fail('That code is not right.'); }
+    await c.db.batch([c.db.stmt('DELETE FROM otps WHERE user_id = ?', u.id),
+      c.db.updateStmt('users', u.id, { mobile_verified: 1, status: u.status === 'pending_otp' ? 'pending_kyc' : u.status })]);
+    return { ok: true, next: 'kyc' };
+  },
+  async 'POST profile/update'(c) {
+    const u = need(c); const b = c.body; const patch = {};
+    for (const k of ['bio', 'region', 'hub', 'skills', 'address']) if (b[k] !== undefined) patch[k] = clean(b[k], k === 'bio' ? 600 : 200);
+    if (b.rate !== undefined) patch.rate = clean(b.rate, 40);
+    if (b.payout_account !== undefined) { const p = clean(b.payout_account, 20).replace(/[\s-]/g, ''); if (p && !/^(\+63|0)9\d{9}$/.test(p)) fail('GCash number format: 09XXXXXXXXX'); patch.payout_account = p; }
+    if (b.tin !== undefined) { const tin = clean(b.tin, 20); if (tin && !/^\d{3}-?\d{3}-?\d{3}(-?\d{3,5})?$/.test(tin)) fail('TIN format: 000-000-000-000'); patch.tin = tin; }
+    if (patch.bio && OFF_PLATFORM.test(patch.bio)) { patch.bio = patch.bio.replace(new RegExp(OFF_PLATFORM.source, 'gi'), '').trim(); await penalize(c, u, 'off_platform', 'Contact details in profile bio'); }
+    if (Object.keys(patch).length) await c.db.update('users', u.id, patch);
+    return { user: publicUser({ ...u, ...patch }) };
+  },
+  // Verification. Aspiring (newbie) VAs: Government ID + selfie. Tenured (seasoned) VAs: ID + selfie + proof of work
+  // experience and employment. Active members can later submit kind=upgrade with more proof to raise their rank.
+  async 'POST kyc/submit'(c) {
+    const u = need(c); const b = c.body;
+    const upgrade = b.kind === 'upgrade';
+    if (!u.mobile_verified) fail('Verify your mobile number first.');
+    if (upgrade ? u.status !== 'active' : ['kyc_review', 'active'].includes(u.status)) fail(upgrade ? 'Finish your first verification before requesting a higher rank.' : 'Your verification is already submitted.', 409);
+    if (upgrade && (await c.db.first("SELECT 1 FROM kyc WHERE user_id = ? AND status = 'pending'", u.id))) fail('You already have a request under review.', 409);
+    if (storageMode(c) === 'none') fail('ID uploads open soon: our team is finishing setup. Please try again later.', 503);
+    await rate(c, 'kyc:' + u.id, 3, 3600);
+    const checkFile = (f, types, label) => {
+      if (!f || typeof f === 'string') fail(`Upload ${label}.`);
+      if (!types.includes(f.type)) fail(types.includes('application/pdf') ? 'Proof documents must be JPG, PNG, WebP or PDF.' : 'Photos must be JPG, PNG or WebP.');
+      if (f.size > MAX_IMG) fail('Each file must be under 5 MB.');
+    };
+    const proofs = ['proof_1', 'proof_2', 'proof_3'].map((k) => b[k]).filter((f) => f && typeof f !== 'string' && f.size);
+    const needsExperience = upgrade || (u.account_type === 'va' && u.tier === 'seasoned');
+    let experience = {};
+    if (needsExperience) {
+      experience = { years: Math.max(0, Math.min(40, Number(b.years) || 0)), roles: clean(b.roles, 600), employers: clean(b.employers, 600), reference: clean(b.reference, 300) };
+      if (experience.years < 1) fail('Tenured VAs need at least 1 year of experience. Choose "Aspiring" if you are just starting.');
+      if (experience.roles.length < 20) fail('Describe your VA roles and main tasks (20+ characters).');
+      if (!proofs.length) fail('Upload at least one proof of work: certificate of employment, contract, payslip or client reference.');
+      proofs.forEach((f) => checkFile(f, [...IMG_TYPES, 'application/pdf'], 'proof of work'));
+    }
+    const flags = []; let idHash = '', idKey = '', selfieKey = '', fp = u.fingerprint;
+    const id = uid();
+    if (!upgrade) {
+      const idNo = clean(b.id_number, 40).replace(/[\s-]/g, '').toUpperCase();
+      if (idNo.length < 5) fail('Enter your ID number.');
+      checkFile(b.id_file, IMG_TYPES, 'a photo of your ID'); checkFile(b.selfie_file, IMG_TYPES, 'a selfie');
+      if (!c.env.PEPPER) fail('Server is missing PEPPER.', 500);
+      idHash = await hmac(c.env.PEPPER, clean(b.id_type, 30) + ':' + idNo);
+      if (await c.db.first('SELECT 1 FROM kyc WHERE id_hash = ? AND user_id <> ?', idHash, u.id)) { flags.push('duplicate_id'); await penalize(c, u, 'dup_id', 'Government ID already used by another account', 'high'); }
+      fp = b.fingerprint ? await sha256(String(b.fingerprint)) : u.fingerprint;
+      if (fp && await c.db.first('SELECT 1 FROM users WHERE fingerprint = ? AND id <> ?', fp, u.id)) flags.push('duplicate_device');
+      idKey = await putFile(c, { folder: 'kyc', name: `${u.id}-${id}-id`, bytes: await b.id_file.arrayBuffer(), contentType: b.id_file.type });
+      selfieKey = await putFile(c, { folder: 'kyc', name: `${u.id}-${id}-selfie`, bytes: await b.selfie_file.arrayBuffer(), contentType: b.selfie_file.type });
+    }
+    const proofKeys = [];
+    for (const [i, f] of proofs.entries()) proofKeys.push(await putFile(c, { folder: 'kyc', name: `${u.id}-${id}-proof${i + 1}`, bytes: await f.arrayBuffer(), contentType: f.type }));
+    const stmts = [c.db.insertStmt('kyc', { id, user_id: u.id, kind: upgrade ? 'upgrade' : needsExperience ? 'tenured' : 'identity', id_type: upgrade ? '—' : clean(b.id_type, 30), id_hash: idHash,
+      id_file: idKey, selfie_file: selfieKey, proof_files: proofKeys, experience, fingerprint: fp, status: 'pending', flags, created_at: now() })];
+    if (!upgrade) stmts.push(c.db.updateStmt('users', u.id, { status: 'kyc_review' }));
+    await c.db.batch(stmts);
+    return { ok: true, flags: flags.length };
+  },
+
+  // ───────── Circle Hubs ─────────
+  async 'GET hubs/messages'(c) {
+    const u = needActive(c); const ch = clean(c.query.channel, 120);
+    if (ch.startsWith('dm:')) await dmAllowed(c, ch); else if (!(await c.db.first('SELECT 1 FROM channels WHERE id = ?', ch))) fail('Unknown channel', 404);
+    const rows = await c.db.all(`SELECT * FROM (SELECT m.id, m.ts, m.name, m.user_id, m.text, u.account_type FROM messages m LEFT JOIN users u ON u.id = m.user_id
+      WHERE m.channel = ? AND m.ts > ? ORDER BY m.ts DESC LIMIT 80) ORDER BY ts`, ch, Number(c.query.after) || 0);
+    return { messages: rows.map((m) => ({ ...strip(m, 'user_id', 'account_type'), host: m.account_type === 'host', mine: m.user_id === u.id })) };
+  },
+  async 'POST hubs/post'(c) {
+    const u = needActive(c);
+    if (u.muted_until > now()) fail('You are muted for 24 hours after a safety flag.', 403);
+    const ch = clean(c.body.channel, 120);
+    if (ch.startsWith('dm:')) await dmAllowed(c, ch); else if (!(await c.db.first('SELECT 1 FROM channels WHERE id = ?', ch))) fail('Unknown channel', 404);
+    const text = clean(c.body.text, 1200); if (!text) fail('Write something first.');
+    const s = await screenText(c, u, text);
+    const m = await c.db.insert('messages', { ts: now(), channel: ch, user_id: u.id, name: ch === 'vent-room' ? 'Someone in the circle' : u.name, text: s.text, flagged: s.flagged });
+    return { id: m.id, flagged: s.flagged, action: s.action, text: s.text };
+  },
+  async 'GET hubs/dms'(c) {
+    const u = needActive(c);
+    const rows = await c.db.all(`SELECT m.client_id, m.va_id, o.name FROM matches_and_unlocks m JOIN users o ON o.id = CASE WHEN m.client_id = ? THEN m.va_id ELSE m.client_id END
+      WHERE m.status = 'unlocked' AND (m.client_id = ? OR m.va_id = ?)`, u.id, u.id, u.id);
+    return { dms: rows.map((r) => ({ channel: dmId(r.client_id, r.va_id), name: r.name })) };
+  },
+
+  // ───────── Marketplace ─────────
+  async 'GET talent/list'(c) {
+    needActive(c); const q = c.query;
+    const rows = await c.db.all(`SELECT * FROM users WHERE account_type = 'va' AND status = 'active' AND (? = '' OR region = ?) AND (? = '' OR tier = ?)
+      AND (? = '' OR instr(lower(skills), lower(?)) > 0) AND sim_score >= ? ORDER BY (pro_until > ${now()}) DESC, va_rank DESC, sim_score DESC LIMIT 100`,
+      q.region || '', q.region || '', q.tier || '', q.tier || '', clean(q.skill, 60), clean(q.skill, 60), Number(q.min_score) || 0);
+    return { talent: rows.map(cardUser), unlock_fee_php: cfgNum(c, 'unlock_fee_php') };
+  },
+  async 'POST talent/unlock'(c) {
+    const u = needActive(c, ['client', 'recruiter', ...STAFF]);
+    const va = await c.db.first("SELECT * FROM users WHERE id = ? AND account_type = 'va' AND status = 'active'", c.body.va_id);
+    if (!va) fail('That VA is not available.', 404);
+    let m = await c.db.first("SELECT * FROM matches_and_unlocks WHERE client_id = ? AND va_id = ? AND type = 'unlock'", u.id, va.id);
+    if (m?.status === 'unlocked') return { already: true, channel: dmId(u.id, va.id) };
+    if (!m) m = await c.db.insert('matches_and_unlocks', { ts: now(), client_id: u.id, va_id: va.id, type: 'unlock', status: 'pending_payment', amount: cfgNum(c, 'unlock_fee_php'), currency: 'PHP' });
+    const r = await checkout(c, { ref_type: 'unlock', ref_id: m.id, amount: cfgNum(c, 'unlock_fee_php'), description: 'Unlock on-platform chat with ' + va.name, back: '/talent.html' });
+    return { ...r, channel: dmId(u.id, va.id) };
+  },
+  async 'GET jobs/list'(c) {
+    needActive(c); const q = clean(c.query.q, 60);
+    const rows = await c.db.all(`SELECT * FROM jobs WHERE status = 'live' AND (? = '' OR instr(lower(title || ' ' || ifnull(company,'') || ' ' || ifnull(tags,'')), lower(?)) > 0) ORDER BY ingested_at DESC LIMIT 150`, q, q);
+    return { jobs: rows.map((j) => ({ id: j.id, title: j.title, company: j.company, location: j.location, rate: j.rate, tags: j.tags, url: j.source_url, posted_at: j.posted_at, safety: j.safety_rating, flags: pj(j.safety_flags, []) })) };
+  },
+
+  // ───────── Circle Bestie academy ─────────
+  async 'GET academy/scenarios'(c) { return { scenarios: SCENARIOS.map(({ id, title, skill, brief }) => ({ id, title, skill, brief })), ai: !!c.env.GEMINI_API_KEY }; },
+  async 'POST academy/turn'(c) {
+    const u = needActive(c); await rate(c, 'sim:' + u.id, 30, 600);
+    const sc = SCENARIOS.find((s) => s.id === c.body.scenario_id) || fail('Pick a scenario.');
+    if (!(c.body.history || []).length) await checkSimAllowance(c, u);
+    const hist = (c.body.history || []).slice(-16).map((h) => ({ role: h.role === 'va' ? 'user' : 'model', parts: [{ text: clean(h.text, 1500) }] }));
+    if (!hist.length) return { reply: sc.opening };
+    const reply = await gemini(c, '', { contents: hist, temperature: 0.8, system: `You are role-playing as ${sc.persona}. Scenario: ${sc.brief} Stay fully in character, keep replies under 90 words, react realistically to how the VA handles you, and escalate if they are vague. Never mention you are an AI.` });
+    return { reply: reply || offlineReply(hist.length) };
+  },
+  async 'POST academy/grade'(c) {
+    const u = needActive(c);
+    const sc = SCENARIOS.find((s) => s.id === c.body.scenario_id) || fail('Pick a scenario.');
+    const hist = (c.body.history || []).slice(-20); const vaTurns = hist.filter((h) => h.role === 'va');
+    if (vaTurns.length < 2) fail('Reply at least twice before asking for your score.');
+    const transcript = hist.map((h) => (h.role === 'va' ? 'VA: ' : 'CLIENT: ') + clean(h.text, 1500)).join('\n');
+    let g = await gemini(c, `Grade this virtual assistant role-play. Scenario: ${sc.brief}\nReturn JSON {"communication":0-100,"technical":0-100,"crisis":0-100,"overall":0-100,"feedback":"3 short bullet points, kind but honest, in warm, plain English"}.\n\n${transcript}`, { json: true, temperature: 0.2 });
+    if (!g || g.overall === undefined) g = offlineGrade(vaTurns.map((h) => h.text).join(' '));
+    const sim = await c.db.insert('simulations', { ts: now(), user_id: u.id, scenario: sc.id, transcript, score_comm: g.communication, score_tech: g.technical, score_crisis: g.crisis, overall: g.overall, feedback: g.feedback });
+    const avg = Math.round((await c.db.first('SELECT AVG(overall) a FROM simulations WHERE user_id = ?', u.id)).a);
+    await c.db.update('users', u.id, { sim_score: avg });
+    const earned = Number(g.overall) >= 80; if (earned) await addBadge(c, u.id, sc.skill);
+    return { id: sim.id, scores: g, average: avg, badge: earned ? sc.skill : null };
+  },
+  async 'GET academy/mine'(c) {
+    const u = need(c);
+    const rows = await c.db.all('SELECT * FROM simulations WHERE user_id = ? ORDER BY ts DESC', u.id);
+    return { results: rows.map((s) => ({ id: s.id, ts: s.ts, scenario: s.scenario, overall: s.overall, communication: s.score_comm, technical: s.score_tech, crisis: s.score_crisis, feedback: s.feedback })) };
+  },
+
+  // ───────── Circle Wellness (telehealth) ─────────
+  async 'GET wellness/practitioners'(c) {
+    need(c);
+    const rows = await c.db.all('SELECT * FROM practitioners WHERE verified = 1');
+    return { practitioners: rows.map((p) => ({ id: p.id, name: p.name, specialty: p.specialty, rate: p.rate, bio: p.bio, availability: p.availability, prc_license: maskLicense(p.prc_license) })), crisis: cfgJson(c, 'crisis_resources', []) };
+  },
+  async 'POST wellness/book'(c) {
+    const u = needActive(c);
+    const p = await c.db.first('SELECT * FROM practitioners WHERE id = ? AND verified = 1', c.body.practitioner_id) || fail('That practitioner is not available.', 404);
+    const when = Date.parse(c.body.scheduled_at) || fail('Pick a date and time.');
+    if (when < now() + 3600000) fail('Book at least an hour ahead.');
+    const cons = await c.db.insert('consultations', { ts: now(), practitioner_id: p.id, user_id: u.id, scheduled_at: when, concern: clean(c.body.concern, 600), status: 'pending_payment', amount: p.rate, platform_fee: 0, room: 'tvc-' + randHex(12), paid: 0 });
+    return checkout(c, { ref_type: 'consult', ref_id: cons.id, amount: p.rate, description: 'Wellness consultation with ' + p.name, back: '/wellness.html' });
+  },
+  async 'GET wellness/mine'(c) {
+    const u = need(c);
+    const me = await c.db.first('SELECT id FROM practitioners WHERE user_id = ?', u.id);
+    const rows = await c.db.all(`SELECT c.*, p.name AS prac_name, m.name AS member_name FROM consultations c JOIN practitioners p ON p.id = c.practitioner_id JOIN users m ON m.id = c.user_id
+      WHERE c.paid = 1 AND (c.user_id = ? OR c.practitioner_id = ?) ORDER BY c.scheduled_at`, u.id, me ? me.id : '');
+    return { consultations: rows.map((r) => { const asPrac = me && r.practitioner_id === me.id;
+      return { id: r.id, when: r.scheduled_at, status: r.status, with: asPrac ? r.member_name : r.prac_name, concern: asPrac ? r.concern : '', room: 'https://meet.jit.si/' + r.room }; }), is_practitioner: !!me };
+  },
+  async 'POST wellness/apply'(c) {
+    const u = need(c); const b = c.body; const lic = clean(b.prc_license, 20);
+    if (!/^\d{5,7}$/.test(lic)) fail('Enter your PRC license number (digits only).');
+    if (await c.db.first('SELECT 1 FROM practitioners WHERE user_id = ?', u.id)) fail('You already applied.', 409);
+    await c.db.batch([
+      c.db.insertStmt('practitioners', { id: uid(), user_id: u.id, name: clean(b.name || u.name, 80), prc_license: lic, specialty: clean(b.specialty, 80), rate: Number(b.rate) || 1500, bio: clean(b.bio, 600), verified: 0, availability: clean(b.availability, 200) }),
+      c.db.insertStmt('platform_requests', { id: uid(), ts: now(), type: 'practitioner_apply', user_id: u.id, name: u.name, email: u.email, details: `PRC ${lic} · ${clean(b.specialty, 80)}`, status: 'new' })]);
+    return { ok: true };
+  },
+
+  // ───────── Circle Squads ─────────
+  async 'GET squads/mine'(c) {
+    const u = need(c); const all = STAFF.includes(u.role) || FINANCE.includes(u.role);
+    const rows = all ? await c.db.all('SELECT * FROM squads') : await c.db.all("SELECT * FROM squads WHERE leader_id = ? OR (',' || members || ',') LIKE ?", u.id, `%,${u.id},%`);
+    const ids = [...new Set(rows.flatMap((s) => [s.leader_id, ...s.members.split(',')]).filter(Boolean))];
+    const names = ids.length ? Object.fromEntries((await c.db.all(`SELECT id, name FROM users WHERE id IN (${ids.map(() => '?').join(',')})`, ...ids)).map((x) => [x.id, x.name])) : {};
+    return { squads: rows.map((s) => ({ id: s.id, name: s.name, client: s.client, status: s.status, retainer_usd: s.retainer_usd, start_date: s.start_date,
+      leader: names[s.leader_id] || '—', members: s.members.split(',').filter(Boolean).map((id) => names[id] || id) })) };
+  },
+  async 'POST squads/request'(c) { return intake(c, 'squad', 2000); },
+  async 'POST studio/request'(c) {
+    if (clean(c.body.details, 3000).length < 20) fail('Tell us a little more about the platform (20+ characters).');
+    return intake(c, 'studio', 3000);
+  },
+
+  // ───────── Circle Scam-Buster ─────────
+  async 'POST scam/scan'(c) {
+    await rate(c, 'scan:' + (c.user ? c.user.id : c.ip), 15, 600);
+    const text = clean(c.body.text, 6000); if (text.length < 20) fail('Paste the full message or job post (20+ characters).');
+    return scanText(c, text);
+  },
+  async 'POST scam/report'(c) {
+    const u = needActive(c); await rate(c, 'rep:' + u.id, 10, 3600);
+    const text = clean(c.body.text, 6000); if (text.length < 20) fail('Paste the full message or job post.');
+    const s = await scanText(c, text); const company = clean(c.body.company, 120);
+    const r = await c.db.insert('scam_reports', { ts: now(), user_id: u.id, title: clean(c.body.title, 140) || 'Suspicious offer', text, company, ai_rating: s.rating, ai_score: s.score, ai_flags: s.flags, ai_summary: s.summary, status: 'open' });
+    if (company) await upsertCompany(c, company, '', s.flags, 1);
+    return { id: r.id, scan: s };
+  },
+  async 'GET scam/reports'(c) {
+    const u = needActive(c);
+    const rows = await c.db.all(`SELECT r.*, v.value AS my_vote FROM scam_reports r LEFT JOIN votes v ON v.target_type = 'report' AND v.target_id = r.id AND v.user_id = ?
+      WHERE r.status <> 'removed' ORDER BY r.ts DESC LIMIT 100`, u.id);
+    return { reports: rows.map((r) => ({ id: r.id, ts: r.ts, title: r.title, text: r.text, company: r.company, rating: r.ai_rating, score: r.ai_score, flags: pj(r.ai_flags, []), summary: r.ai_summary, up: r.verify_up, down: r.verify_down, status: r.status, my_vote: r.my_vote || 0 })) };
+  },
+  async 'POST scam/vote'(c) {
+    const u = needActive(c);
+    const r = await c.db.first('SELECT * FROM scam_reports WHERE id = ?', c.body.id) || fail('Report not found', 404);
+    if (r.user_id === u.id) fail('You cannot verify your own report.');
+    const val = c.body.value > 0 ? 1 : -1;
+    if (!(await vote(c, 'report', r.id, val))) fail('You already voted on this.', 409);
+    const col = val > 0 ? 'verify_up' : 'verify_down';
+    const upd = await c.db.first(`UPDATE scam_reports SET ${col} = ${col} + 1 WHERE id = ? RETURNING verify_up, verify_down, status, company`, r.id);
+    if (upd.verify_up >= 5 && upd.verify_up > 2 * upd.verify_down && upd.status === 'open') {
+      await c.db.update('scam_reports', r.id, { status: 'verified' }); upd.status = 'verified';
+      if (upd.company) await upsertCompany(c, upd.company, '', [], 0, true);
+    }
+    return { up: upd.verify_up, down: upd.verify_down, status: upd.status };
+  },
+  async 'GET scam/companies'(c) {
+    const u = needActive(c);
+    const rows = await c.db.all(`SELECT co.*, v.id AS voted FROM companies co LEFT JOIN votes v ON v.target_type = 'company' AND v.target_id = co.id AND v.user_id = ?
+      ORDER BY co.risk_score DESC LIMIT 200`, u.id);
+    return { companies: rows.map((x) => ({ id: x.id, name: x.name, website: x.website, reports: x.reports, upvotes: x.upvotes, risk: x.risk_score, flags: pj(x.flags, []), status: x.status, voted: !!x.voted })) };
+  },
+  async 'POST scam/company'(c) {
+    const u = needActive(c); await rate(c, 'co:' + u.id, 10, 3600);
+    const name = clean(c.body.name, 120); if (name.length < 2) fail('Enter the company or agency name.');
+    const ISSUES = { fake_agency: 'Fake agency', withheld_wages: 'Withheld wages', exploitative: 'Exploitative terms', upfront_fees: 'Upfront fees', harassment: 'Harassment', other: 'Other' };
+    const label = (Object.prototype.hasOwnProperty.call(ISSUES, c.body.issue || '') && ISSUES[c.body.issue]) || 'Other';
+    const co = await upsertCompany(c, name, clean(c.body.website, 200), [label], 1);
+    await c.db.insert('scam_reports', { ts: now(), user_id: u.id, title: `${label}: ${name}`, text: clean(c.body.details, 3000) || label, company: name, ai_rating: 'caution', ai_score: 0, ai_flags: [label], ai_summary: 'Member report', status: 'open' });
+    return { id: co.id, risk: co.risk_score };
+  },
+  async 'POST scam/company_vote'(c) {
+    needActive(c);
+    const co = await c.db.first('SELECT * FROM companies WHERE id = ?', c.body.id) || fail('Not found', 404);
+    if (!(await vote(c, 'company', co.id, 1))) fail('You already upvoted this.', 409);
+    co.upvotes += 1; await scoreCompany(c, co, { upvotes: co.upvotes });
+    return { upvotes: co.upvotes, risk: co.risk_score };
+  },
+
+  // ───────── Mentors ─────────
+  async 'GET mentor/modules'(c) {
+    need(c);
+    // Only modules whose mentor still qualifies to sell (Tier 2 + mentor rank) are listed.
+    const rows = await c.db.all(`SELECT m.*, t.hourly_rate, u.name AS mentor FROM modules m JOIN mentors t ON t.id = m.mentor_id JOIN users u ON u.id = t.user_id
+      WHERE m.active = 1 AND u.status = 'active' AND ((u.pro_until > ? AND u.va_rank >= ?) OR u.role IN ('founder','gm','ea','admin_it','moderator'))`, now(), cfgJson(c, 'rank_privileges', {}).mentor ?? 2);
+    return { modules: rows.map((m) => ({ id: m.id, title: m.title, price: m.price, description: m.description, mentor: m.mentor, hourly_rate: m.hourly_rate })) };
+  },
+  async 'GET mentor/me'(c) {
+    const u = need(c);
+    const mt = await c.db.first('SELECT * FROM mentors WHERE user_id = ?', u.id);
+    const e = await c.db.first(`SELECT SUM(CASE WHEN status = 'unpaid' THEN net ELSE 0 END) unpaid, SUM(CASE WHEN status = 'paid_out' THEN net ELSE 0 END) paid
+      FROM transactions_ledger WHERE payee_id = ? AND type = 'commission'`, u.id);
+    const mods = mt ? await c.db.all('SELECT * FROM modules WHERE mentor_id = ?', mt.id) : [];
+    return { mentor: mt ? { id: mt.id, hourly_rate: mt.hourly_rate, bio: mt.bio, active: !!mt.active } : null,
+      modules: mods.map((m) => ({ id: m.id, title: m.title, price: m.price, mentor_split_pct: m.mentor_split_pct, description: m.description, active: !!m.active, sales: m.sales })),
+      earnings: { unpaid: round2(e.unpaid || 0), paid: round2(e.paid || 0) }, split_min: cfgNum(c, 'mentor_split_min'), split_max: cfgNum(c, 'mentor_split_max') };
+  },
+  async 'POST mentor/save'(c) {
+    const u = needTeacher(c); // Tier 2 · Circle Pro + Proven VA rank
+    const rateV = Number(c.body.hourly_rate);
+    if (!(rateV >= 100 && rateV <= 50000)) fail('Hourly rate must be ₱100–₱50,000.');
+    const bio = clean(c.body.bio, 600);
+    const mt = await c.db.first('SELECT id FROM mentors WHERE user_id = ?', u.id);
+    if (mt) { await c.db.update('mentors', mt.id, { hourly_rate: rateV, bio }); return { ok: true, id: mt.id }; }
+    const n = await c.db.insert('mentors', { user_id: u.id, hourly_rate: rateV, bio, active: 1 });
+    if (u.role === 'va') await c.db.update('users', u.id, { role: 'mentor' });
+    await addBadge(c, u.id, 'Mentor');
+    return { ok: true, id: n.id };
+  },
+  async 'POST mentor/module'(c) {
+    const u = needTeacher(c);
+    const mt = await c.db.first('SELECT id FROM mentors WHERE user_id = ?', u.id) || fail('Set up your mentor profile first.');
+    const b = c.body; const split = Number(b.mentor_split_pct), lo = cfgNum(c, 'mentor_split_min'), hi = cfgNum(c, 'mentor_split_max');
+    if (!(split >= lo && split <= hi)) fail(`Your split must be between ${lo}% and ${hi}%.`);
+    const price = Number(b.price); if (!(price >= 100)) fail('Price must be at least ₱100.');
+    const title = clean(b.title, 120); if (title.length < 3) fail('Add a title.');
+    const row = { title, price, mentor_split_pct: split, description: clean(b.description, 1200), active: b.active !== false };
+    if (b.id) {
+      const r = await c.db.run('UPDATE modules SET title=?, price=?, mentor_split_pct=?, description=?, active=? WHERE id = ? AND mentor_id = ?', row.title, row.price, row.mentor_split_pct, row.description, row.active ? 1 : 0, b.id, mt.id);
+      if (!r.meta.changes) fail('Not your module.', 403); return { id: b.id };
+    }
+    return { id: (await c.db.insert('modules', { ...row, mentor_id: mt.id, sales: 0 })).id };
+  },
+  async 'POST mentor/buy'(c) {
+    needActive(c);
+    const m = await c.db.first(`SELECT m.* FROM modules m JOIN mentors t ON t.id = m.mentor_id JOIN users u ON u.id = t.user_id WHERE m.id = ? AND m.active = 1 AND u.status = 'active' AND ((u.pro_until > ? AND u.va_rank >= ?) OR u.role IN ('founder','gm','ea','admin_it','moderator'))`,
+      c.body.module_id, now(), cfgJson(c, 'rank_privileges', {}).mentor ?? 2) || fail('Module not available.', 404);
+    return checkout(c, { ref_type: 'module', ref_id: m.id, amount: m.price, description: 'Training module: ' + m.title, back: '/mentor.html?for=shop' });
+  },
+  async 'POST mentor/module/pause'(c) { // always allowed for your own modules, even after Tier 2 lapses
+    const u = needActive(c);
+    const r = await c.db.run('UPDATE modules SET active = 0 WHERE id = ? AND mentor_id IN (SELECT id FROM mentors WHERE user_id = ?)', c.body.id, u.id);
+    if (!r.meta.changes) fail('Not your module.', 403);
+    return { ok: true };
+  },
+
+  // ───────── Sourcing terminal & pipeline ─────────
+  async 'GET sourcing/search'(c) {
+    needActive(c, SOURCING); const q = c.query;
+    const skill = clean(q.skill, 60), text = clean(q.q, 60), minScore = Number(q.min_score) || 0;
+    let out = [];
+    if (q.source !== 'ingested') out = out.concat((await c.db.all(`SELECT * FROM users WHERE account_type = 'va' AND status IN ('active','kyc_review')
+      AND (? = '' OR instr(lower(skills), lower(?)) > 0) AND (? = '' OR region = ?) AND (? = '' OR hub = ?) AND sim_score >= ?
+      AND (? = '' OR instr(lower(name || ' ' || bio), lower(?)) > 0) LIMIT 300`, skill, skill, q.region || '', q.region || '', q.hub || '', q.hub || '', minScore, text, text))
+      .map((u) => ({ ref: 'user:' + u.id, name: u.name, headline: u.bio, skills: u.skills, region: u.region, hub: u.hub, tier: u.tier, sim_score: u.sim_score, verified: u.status === 'active', source: 'member' })));
+    if (q.source !== 'member' && !minScore && !q.hub) out = out.concat((await c.db.all(`SELECT * FROM candidates WHERE opt_out = 0
+      AND (? = '' OR instr(lower(skills), lower(?)) > 0) AND (? = '' OR region = ?) AND (? = '' OR instr(lower(name || ' ' || ifnull(headline,'')), lower(?)) > 0) LIMIT 300`,
+      skill, skill, q.region || '', q.region || '', text, text))
+      .map((x) => ({ ref: 'cand:' + x.id, name: x.name, headline: x.headline, skills: x.skills || '', region: x.region, hub: '', tier: '', sim_score: 0, verified: false, source: 'ingested', url: x.source_url })));
+    const hubs = await c.db.all("SELECT hub, COUNT(*) n FROM users WHERE status = 'active' AND hub <> '' GROUP BY hub");
+    return { results: out.slice(0, 300), hub_counts: Object.fromEntries(hubs.map((h) => [h.hub, h.n])) };
+  },
+  async 'GET pipeline/list'(c) {
+    needActive(c, SOURCING);
+    return { stages: STAGES, cards: await c.db.all('SELECT id, ref, name, stage, owner, client, note, updated_at FROM pipeline ORDER BY updated_at DESC') };
+  },
+  async 'POST pipeline/add'(c) {
+    const u = needActive(c, SOURCING); const ref = clean(c.body.ref, 60);
+    if (!/^(user|cand):/.test(ref)) fail('Unknown candidate');
+    if (ref.startsWith('user:') && !(await c.db.first("SELECT 1 FROM users WHERE id = ? AND account_type = 'va'", ref.slice(5)))) fail('Unknown candidate');
+    const r = await c.db.run('INSERT OR IGNORE INTO pipeline (id, ref, name, stage, owner, client, updated_at) VALUES (?,?,?,?,?,?,?)', uid(), ref, clean(c.body.name, 80),
+      ref.startsWith('user:') ? 'Screened' : 'Ingested', u.name, clean(c.body.client, 80), now());
+    if (!r.meta.changes) fail('Already in the pipeline.', 409);
+    return { id: (await c.db.first('SELECT id FROM pipeline WHERE ref = ?', ref)).id };
+  },
+  async 'POST pipeline/move'(c) {
+    const u = needActive(c, SOURCING);
+    const p = await c.db.first('SELECT * FROM pipeline WHERE id = ?', c.body.id) || fail('Card not found', 404);
+    const patch = { updated_at: now(), owner: u.name };
+    if (c.body.stage) { if (!STAGES.includes(c.body.stage)) fail('Unknown stage'); patch.stage = c.body.stage; }
+    if (c.body.note !== undefined) patch.note = clean(c.body.note, 400);
+    if (c.body.client !== undefined) patch.client = clean(c.body.client, 80);
+    await c.db.update('pipeline', p.id, patch);
+    if (patch.stage === 'Placed' && p.stage !== 'Placed' && p.ref.startsWith('user:')) {
+      await addBadge(c, p.ref.slice(5), 'Placed');
+      await c.db.insert('matches_and_unlocks', { ts: now(), client_id: '', va_id: p.ref.slice(5), type: 'placement', status: 'placed', note: patch.client || p.client || '' });
+    }
+    return { ok: true };
+  },
+
+  // ───────── Privacy (RA 10173) ─────────
+  async 'POST privacy/request'(c) {
+    await rate(c, 'dsr:' + c.ip, 5, 3600);
+    const type = ['access', 'correction', 'erasure', 'objection', 'candidate_removal'].includes(c.body.type) ? c.body.type : fail('Choose a request type.');
+    const email = c.user ? c.user.email : clean(c.body.email, 120); if (!isEmail(email)) fail('Enter a valid email.');
+    await c.db.insert('platform_requests', { ts: now(), type: 'dsr_' + type, user_id: c.user?.id || '', name: clean(c.body.name, 80) || c.user?.name || '', email, details: clean(c.body.details, 2000), status: 'new' });
+    return { ok: true };
+  },
+  async 'GET privacy/export'(c) {
+    const u = need(c);
+    const q = (sql) => c.db.all(sql, u.id);
+    return { exported_at: new Date().toISOString(), profile: strip(u, 'pw_hash', 'fingerprint'),
+      kyc: await c.db.all('SELECT id_type, status, created_at, reviewed_at FROM kyc WHERE user_id = ?', u.id),
+      messages: await q('SELECT ts, channel, text FROM messages WHERE user_id = ?'), simulations: await q('SELECT ts, scenario, overall, feedback, transcript FROM simulations WHERE user_id = ?'),
+      transactions: await c.db.all('SELECT ts, type, ref_type, gross, net, currency, status FROM transactions_ledger WHERE payer_id = ? OR payee_id = ?', u.id, u.id),
+      consultations: await q('SELECT scheduled_at, status, amount FROM consultations WHERE user_id = ?'), reports: await q('SELECT ts, title, text FROM scam_reports WHERE user_id = ?'),
+      escalations: await q('SELECT ts, rule, action, detail FROM escalation_logs WHERE user_id = ?'), payouts: await q('SELECT date, gross, ewt, net, currency FROM payouts WHERE payee_id = ?'),
+      posts: await q('SELECT ts, kind, text, hub FROM posts WHERE user_id = ?'), comments: await q('SELECT ts, post_id, text FROM comments WHERE user_id = ?'),
+      connections: await c.db.all('SELECT a, b, status, ts FROM connections WHERE a = ? OR b = ?', u.id, u.id),
+      bff: { topics: await q('SELECT topic, mode, note, active, ts FROM struggles WHERE user_id = ?'), matches: await c.db.all('SELECT topic, kind, status, ts FROM bff_matches WHERE a = ? OR b = ?', u.id, u.id) },
+      notifications: await q('SELECT ts, type, text FROM notifications WHERE user_id = ?'),
+      learning: { progress: await q('SELECT lesson_id, score, passed, ts FROM lesson_progress WHERE user_id = ?'), certificates: await q('SELECT course_id, ts FROM certificates WHERE user_id = ?') },
+      jobs: { posted: await q('SELECT title, status, ingested_at FROM jobs WHERE posted_by = ?'), applications: await q('SELECT job_id, note, status, ts FROM job_applications WHERE user_id = ?') },
+      membership: { contributions: await q('SELECT ts, amount, display, message FROM supporters WHERE user_id = ?'), rage_packs: await q('SELECT tier, throws, ts FROM rage_purchases WHERE user_id = ? AND credited = 1') },
+      teaching: { gigs: await q('SELECT title, kind, price, created_at FROM mentor_gigs WHERE mentor_id = ?'), bookings: await c.db.all('SELECT gig_title, scheduled_at, status, amount, rating, review FROM gig_bookings WHERE mentee_id = ? OR mentor_id = ?', u.id, u.id) },
+      laughs: { posts: await q('SELECT ts, format, body, anonymous FROM comedy_posts WHERE user_id = ?'), comments: await q('SELECT ts, text FROM comedy_comments WHERE user_id = ?'),
+        columns: await q('SELECT ts, title, body FROM comedy_articles WHERE author_id = ?'), applications: await q('SELECT ts, kind, stage_name, status FROM creator_applications WHERE user_id = ?') } };
+  },
+  async 'GET payouts/form2307'(c) { // members download their own 2307s; finance can download any
+    const u = need(c);
+    const p = await c.db.first('SELECT * FROM payouts WHERE id = ?', c.query.id) || fail('Not found', 404);
+    if (p.payee_id !== u.id && !FINANCE.includes(u.role) && u.role !== 'admin_it') fail('Not yours.', 403);
+    return fileResponse(c, p.form2307_file, `2307-${p.date}.pdf`);
+  },
+
+  // ───────── Circle Ops ─────────
+  async 'GET admin/pulse'(c) {
+    const u = need(c, [...STAFF, ...FINANCE]); const wk = now() - 7 * 864e5;
+    const m = await c.db.first(`SELECT SUM(account_type <> 'host') total, SUM(status='active' AND account_type <> 'host') active, SUM(status='kyc_review') pending_kyc, SUM(created_at > ?) new_7d,
+      SUM(account_type='va') vas, SUM(account_type='client') clients, SUM(founder_slot IS NOT NULL AND tier='newbie') nb, SUM(founder_slot IS NOT NULL AND tier='seasoned') sn FROM users`, wk);
+    const one = async (sql, ...b) => Object.values(await c.db.first(sql, ...b))[0] || 0;
+    const lines = await c.db.all("SELECT ref_type || ' ' || currency AS k, SUM(gross) v FROM transactions_ledger WHERE type = 'payment' GROUP BY ref_type, currency");
+    return {
+      role: u.role,
+      members: { total: m.total, active: m.active || 0, pending_kyc: m.pending_kyc || 0, new_7d: m.new_7d || 0, vas: m.vas || 0, clients: m.clients || 0 },
+      founders: { newbie: m.nb || 0, seasoned: m.sn || 0, newbie_cap: cfgNum(c, 'founders_newbie_cap'), seasoned_cap: cfgNum(c, 'founders_seasoned_cap') },
+      revenue_7d: round2(await one("SELECT SUM(gross) FROM transactions_ledger WHERE type='payment' AND currency='PHP' AND ts > ?", wk)),
+      revenue_by_line: Object.fromEntries(lines.map((l) => [l.k, round2(l.v)])),
+      unpaid_commissions: round2(await one("SELECT SUM(net) FROM transactions_ledger WHERE type='commission' AND status='unpaid'")),
+      open_escalations: await one("SELECT COUNT(*) FROM escalation_logs WHERE status='open'"),
+      open_requests: await one("SELECT COUNT(*) FROM platform_requests WHERE status='new'"),
+      sims_7d: await one('SELECT COUNT(*) FROM simulations WHERE ts > ?', wk), scam_reports_7d: await one('SELECT COUNT(*) FROM scam_reports WHERE ts > ?', wk),
+      placements: await one("SELECT COUNT(*) FROM pipeline WHERE stage='Placed'"), squads_active: await one("SELECT COUNT(*) FROM squads WHERE status='active'"),
+      mrr_usd: await one("SELECT SUM(retainer_usd) FROM squads WHERE status='active'"),
+      hubs: await c.db.all(`SELECT ch.id, (SELECT COUNT(*) FROM users u WHERE u.hub = ch.id AND u.status='active') members,
+        (SELECT COUNT(*) FROM messages m WHERE m.channel = ch.id AND m.ts > ?) messages_7d FROM channels ch ORDER BY ch.sort`, wk),
+      top_users: (await c.db.all("SELECT * FROM users WHERE account_type='va' AND status='active' ORDER BY sim_score DESC LIMIT 5")).map(cardUser),
+    };
+  },
+  async 'GET admin/kyc'(c) {
+    need(c, STAFF);
+    const rows = await c.db.all(`SELECT k.*, u.name, u.email, u.mobile, u.tier, u.account_type, u.risk_points, u.va_rank FROM kyc k JOIN users u ON u.id = k.user_id WHERE k.status = 'pending' ORDER BY k.created_at`);
+    return { rank_names: cfgJson(c, 'rank_names', {}), queue: rows.map((k) => ({ id: k.id, user_id: k.user_id, name: k.name, email: k.email, mobile: k.mobile, tier: k.tier, account_type: k.account_type,
+      kind: k.kind, id_type: k.id_type, has_id: !!k.id_file, proofs: pj(k.proof_files, []).length, experience: pj(k.experience, {}), current_rank: k.va_rank,
+      suggested_rank: k.kind === 'upgrade' ? Math.min(3, (k.va_rank || 0) + 1) : k.kind === 'tenured' ? 2 : 1, flags: pj(k.flags, []), risk_points: k.risk_points, created_at: k.created_at })) };
+  },
+  async 'GET admin/kyc/file'(c) {
+    need(c, STAFF);
+    const k = await c.db.first('SELECT * FROM kyc WHERE id = ?', c.query.id) || fail('Not found', 404);
+    await audit(c, 'kyc_view', k.id, c.query.which);
+    const which = c.query.which;
+    return fileResponse(c, which === 'selfie' ? k.selfie_file : which === 'proof' ? pj(k.proof_files, [])[Number(c.query.n) || 0] : k.id_file);
+  },
+  async 'POST admin/kyc/review'(c) {
+    const s = need(c, STAFF);
+    const k = await c.db.first("SELECT * FROM kyc WHERE id = ? AND status = 'pending'", c.body.id) || fail('Already reviewed or not found.', 409);
+    const u = await c.db.first('SELECT * FROM users WHERE id = ?', k.user_id);
+    const approve = !!c.body.approve, note = clean(c.body.note, 300);
+    const claimed = await c.db.run("UPDATE kyc SET status = ?, reviewer = ?, note = ?, reviewed_at = ? WHERE id = ? AND status = 'pending'", approve ? 'approved' : 'rejected', s.id, note, now(), k.id);
+    if (!claimed.meta.changes) fail('Already reviewed.', 409);
+    let slot = '';
+    const rankNames = cfgJson(c, 'rank_names', {});
+    if (approve && k.kind === 'upgrade') {
+      const rank = Math.max(u.va_rank || 0, Math.min(STAFF.includes(s.role) && s.role === 'founder' ? 4 : 3, Number(c.body.rank) || (u.va_rank || 0) + 1));
+      const exp = pj(k.experience, {});
+      await c.db.batch([c.db.updateStmt('users', u.id, { va_rank: rank, years_experience: exp.years || u.years_experience }), c.db.updateStmt('kyc', k.id, { rank_granted: rank })]);
+      await c.db.insert('notifications', { ts: now(), user_id: u.id, type: 'rank', text: `🎉 Your rank is now ${rankNames[rank] || rank}. New privileges unlocked.`, link: '/app.html', read: 0 });
+      await audit(c, 'rank_upgrade', u.id, String(rank));
+      return { ok: true, rank };
+    }
+    if (!approve && k.kind === 'upgrade') {
+      await c.db.insert('notifications', { ts: now(), user_id: u.id, type: 'rank', text: 'Your rank request needs more proof.' + (note ? ' Note: ' + note : ''), link: '/app.html', read: 0 });
+      return { ok: true };
+    }
+    if (approve) {
+      const rank = Math.max(1, Math.min(s.role === 'founder' ? 4 : 3, Number(c.body.rank) || (k.kind === 'tenured' ? 2 : 1)));
+      const exp = pj(k.experience, {});
+      await c.db.update('users', u.id, { status: 'active', va_rank: rank, years_experience: exp.years || 0 });
+      await c.db.update('kyc', k.id, { rank_granted: rank });
+      if (u.account_type === 'va' && !u.founder_slot) {
+        // Founders slots: the UNIQUE index on founder_slot makes concurrent approvals safe (retry with the next number).
+        const cap = cfgNum(c, u.tier === 'newbie' ? 'founders_newbie_cap' : 'founders_seasoned_cap');
+        for (let tries = 0; tries < 5 && !slot; tries++) {
+          const taken = (await c.db.first('SELECT COUNT(*) n FROM users WHERE founder_slot IS NOT NULL AND tier = ?', u.tier)).n;
+          if (taken >= cap) break;
+          try { await c.db.update('users', u.id, { founder_slot: `${u.tier}-${taken + 1}` }); slot = `${u.tier}-${taken + 1}`; } catch (e) { if (!/UNIQUE/.test(e.message)) throw e; }
+        }
+      }
+      await addBadge(c, u.id, 'Verified'); if (slot) await addBadge(c, u.id, 'Founding Member');
+      await sendSms(c, u.mobile, 'Welcome to The Virtual Circle! Your verification is approved. Keep the Virtual Circle Glowing ✨');
+    } else {
+      await c.db.update('users', u.id, { status: 'pending_kyc' });
+      await sendSms(c, u.mobile, 'The Virtual Circle: we could not verify your ID yet. Please sign in and resubmit.' + (note ? ' Note: ' + note : ''));
+    }
+    await audit(c, approve ? 'kyc_approve' : 'kyc_reject', u.id, note);
+    return { ok: true, founder_slot: slot };
+  },
+  async 'GET admin/escalations'(c) {
+    need(c, STAFF);
+    const rows = await c.db.all(`SELECT e.*, u.name, u.status AS user_status, u.risk_points FROM escalation_logs e LEFT JOIN users u ON u.id = e.user_id ORDER BY e.status = 'open' DESC, e.ts DESC LIMIT 200`);
+    return { escalations: rows };
+  },
+  async 'POST admin/escalations/resolve'(c) {
+    const s = need(c, STAFF);
+    const e = await c.db.first('SELECT * FROM escalation_logs WHERE id = ?', c.body.id) || fail('Not found', 404);
+    const u = await c.db.first('SELECT * FROM users WHERE id = ?', e.user_id); const act = c.body.action;
+    if (!['dismiss', 'reinstate', 'ban', 'confirm_scam'].includes(act)) fail('Unknown action');
+    if (u) {
+      if (act === 'dismiss') await c.db.update('users', u.id, { risk_points: Math.max(0, u.risk_points - e.points) });
+      if (act === 'reinstate') await c.db.update('users', u.id, { status: 'active', muted_until: 0 });
+      if (act === 'ban') { await c.db.update('users', u.id, { status: 'banned' }); await c.db.run('DELETE FROM sessions WHERE user_id = ?', u.id); }
+      if (act === 'confirm_scam') await penalize(c, u, 'scam_confirmed', 'Confirmed by ' + s.name, 'critical');
+    }
+    await c.db.update('escalation_logs', e.id, { status: 'resolved', handled_by: s.name, handled_at: now(), action: `${e.action} → ${act}` });
+    await audit(c, 'escalation_' + act, e.user_id, e.rule);
+    return { ok: true };
+  },
+  async 'GET admin/requests'(c) { need(c, [...STAFF, ...FINANCE]); return { requests: await c.db.all('SELECT * FROM platform_requests ORDER BY ts DESC LIMIT 300') }; },
+  async 'POST admin/requests/update'(c) {
+    const s = need(c, STAFF);
+    const r = await c.db.first('SELECT * FROM platform_requests WHERE id = ?', c.body.id) || fail('Not found', 404);
+    const status = clean(c.body.status, 30) || r.status;
+    await c.db.update('platform_requests', r.id, { status, assigned_to: clean(c.body.assigned_to, 60) || r.assigned_to || s.name, updated_at: now() });
+    if ((r.type === 'dsr_candidate_removal' || r.type === 'dsr_erasure') && status === 'done' && r.details) {
+      await c.db.run("UPDATE candidates SET opt_out = 1 WHERE instr(lower(?), lower(name)) > 0", r.details);
+      await c.db.run("DELETE FROM pipeline WHERE ref IN (SELECT 'cand:' || id FROM candidates WHERE opt_out = 1)");
+    }
+    return { ok: true };
+  },
+  async 'GET admin/users'(c) {
+    need(c, STAFF); const q = clean(c.query.q, 60);
+    const rows = await c.db.all(`SELECT * FROM users WHERE account_type <> 'host' AND (? = '' OR instr(lower(name || ' ' || email || ' ' || mobile), lower(?)) > 0) ORDER BY created_at DESC LIMIT 100`, q, q);
+    return { users: rows.map(publicUser), roles: ROLES };
+  },
+  async 'POST admin/users/role'(c) {
+    const s = need(c, [...SUPER, 'gm']);
+    const u = await c.db.first("SELECT id FROM users WHERE id = ? AND account_type <> 'host'", c.body.id) || fail('Not found', 404);
+    const role = ROLES.includes(c.body.role) ? c.body.role : fail('Unknown role');
+    if (['founder', 'admin_it'].includes(role) && s.role !== 'founder') fail('Only the Founder can grant that role.', 403);
+    await c.db.update('users', u.id, { role }); await audit(c, 'role_change', u.id, role);
+    return { ok: true };
+  },
+  async 'GET admin/practitioners'(c) { need(c, STAFF); return { practitioners: (await c.db.all('SELECT id, name, prc_license, specialty, rate, verified FROM practitioners')).map((p) => ({ ...p, verified: !!p.verified })) }; },
+  async 'POST admin/practitioners/verify'(c) {
+    need(c, STAFF);
+    const p = await c.db.first('SELECT * FROM practitioners WHERE id = ?', c.body.id) || fail('Not found', 404);
+    await c.db.update('practitioners', p.id, { verified: !!c.body.verified });
+    if (c.body.verified) {
+      await c.db.run("UPDATE users SET role = 'practitioner' WHERE id = ? AND role IN ('va','client')", p.user_id);
+      await addBadge(c, p.user_id, 'PRC-Licensed Practitioner');
+    }
+    await audit(c, 'practitioner_verify', p.id, `PRC ${p.prc_license} ${!!c.body.verified}`);
+    return { ok: true };
+  },
+  async 'POST admin/squads/save'(c) {
+    need(c, STAFF); const b = c.body;
+    const row = { name: clean(b.name, 80), leader_id: clean(b.leader_id, 60), members: clean(b.members, 600).split(',').map((x) => x.trim()).filter(Boolean).join(','),
+      client: clean(b.client, 120), retainer_usd: Number(b.retainer_usd) || 0, status: clean(b.status, 20) || 'forming', start_date: clean(b.start_date, 20), notes: clean(b.notes, 600) };
+    if (!row.name) fail('Name the squad.');
+    if (row.retainer_usd && (row.retainer_usd < 1500 || row.retainer_usd > 5000)) fail('Retainers run $1,500–$5,000/mo.');
+    for (const id of [row.leader_id, ...row.members.split(',').filter(Boolean)]) if (!(await c.db.first("SELECT 1 FROM users WHERE id = ? AND account_type = 'va' AND status = 'active'", id))) fail('Squad leaders and members must be active, verified VAs: ' + id);
+    let id = b.id;
+    if (id) { const r = await c.db.update('squads', id, row); if (!r.meta.changes) fail('Not found', 404); } else id = (await c.db.insert('squads', row)).id;
+    await addBadge(c, row.leader_id, 'Pod Leader'); await audit(c, 'squad_save', id, row.name);
+    return { id };
+  },
+  async 'POST admin/squads/invoice'(c) {
+    need(c, [...STAFF, ...FINANCE]);
+    const sq = await c.db.first('SELECT * FROM squads WHERE id = ?', c.body.id) || fail('Not found', 404);
+    return checkout(c, { ref_type: 'squad', ref_id: sq.id, amount: sq.retainer_usd, currency: 'USD', description: 'Monthly retainer: ' + sq.name, back: '/squads.html' });
+  },
+  async 'GET admin/sources'(c) { need(c, STAFF); return { sources: await c.db.all('SELECT * FROM sources ORDER BY rowid') }; },
+  async 'POST admin/sources/save'(c) {
+    need(c, [...SUPER, 'gm']); const b = c.body; const url = clean(b.url, 500);
+    if (!/^https:\/\//.test(url) && !(c.env.DEV_MODE === 'true' && /^http:\/\/(localhost|127\.0\.0\.1)[:/]/.test(url))) fail('Use an https:// URL.');
+    const row = { type: b.type === 'profile' ? 'profile' : 'job', url, format: ['rss', 'json', 'html'].includes(b.format) ? b.format : 'rss', active: b.active !== false, note: clean(b.note, 200) };
+    const id = b.id ? (await c.db.update('sources', b.id, row), b.id) : (await c.db.insert('sources', row)).id;
+    await audit(c, 'source_save', id, url);
+    return { id };
+  },
+  async 'POST admin/sources/run'(c) { need(c, [...SUPER, 'gm']); return ingest(c, c.body.id); },
+  async 'GET admin/ledger'(c) {
+    need(c, [...FINANCE, 'admin_it']);
+    return { ledger: await c.db.all('SELECT * FROM transactions_ledger ORDER BY ts DESC LIMIT 300'),
+      payouts: await c.db.all('SELECT p.*, u.name AS payee_name FROM payouts p LEFT JOIN users u ON u.id = p.payee_id ORDER BY p.date DESC, p.rowid DESC LIMIT 200') };
+  },
+  async 'POST admin/payouts/run'(c) { need(c, FINANCE); await audit(c, 'payouts_run', '', 'manual'); return runPayouts(c); },
+  async 'POST admin/payments/mark_paid'(c) { // bank transfers received outside the gateways
+    need(c, FINANCE); const b = c.body;
+    if (!clean(b.reference, 60)) fail('Add the bank reference.');
+    const TABLE = { squad: 'squads', studio: null, unlock: 'matches_and_unlocks', consult: 'consultations', module: 'modules', pro: 'users', support: 'support_intents', rage: 'rage_purchases', gig: 'gig_bookings', job_post: 'jobs', boost: 'posts' };
+    if (!Object.prototype.hasOwnProperty.call(TABLE, b.ref_type)) fail('Unknown ref type.');
+    if (!(await c.db.first("SELECT 1 FROM users WHERE id = ? AND account_type <> 'host'", clean(b.user_id, 60)))) fail('Payer user ID not found.');
+    if (TABLE[b.ref_type] && !(await c.db.first(`SELECT 1 FROM ${TABLE[b.ref_type]} WHERE id = ?`, clean(b.ref_id, 60)))) fail('Ref ID not found for that type. Check it before recording money.');
+    const r = await processPayment(c, { provider: 'manual:' + c.user.name, event_id: 'manual_' + clean(b.reference, 60), amount: Number(b.amount), currency: clean(b.currency, 3) || 'PHP',
+      ref_type: clean(b.ref_type, 20), ref_id: clean(b.ref_id, 60), user_id: clean(b.user_id, 60) });
+    await audit(c, 'mark_paid', b.ref_id, b.amount);
+    return r;
+  },
+  // ── Paperwork storage: connect the Founder's Google Drive ──
+  async 'GET admin/drive/status'(c) {
+    need(c, [...SUPER, 'gm']);
+    return { mode: storageMode(c), account: c.cfg.drive_account || '', configured: !!(c.env.GOOGLE_CLIENT_ID && c.env.GOOGLE_CLIENT_SECRET) };
+  },
+  async 'GET admin/drive/connect'(c) {
+    need(c, SUPER);
+    return Response.redirect(await driveConnectUrl(c, c.origin), 302);
+  },
+  async 'GET oauth/google/callback'(c) {
+    try {
+      need(c, SUPER);
+      if (c.query.error) fail('Google access was not granted.');
+      await driveFinishConnect(c, c.origin, clean(c.query.code, 500), clean(c.query.state, 64));
+      await audit(c, 'drive_connect', '', c.cfg.drive_account);
+      return Response.redirect(c.origin + '/admin.html?drive=connected', 302);
+    } catch (e) {
+      return Response.redirect(c.origin + '/admin.html?drive_error=' + encodeURIComponent(e.message || 'Connection failed'), 302);
+    }
+  },
+  async 'POST admin/drive/disconnect'(c) { need(c, SUPER); await driveDisconnect(c); await audit(c, 'drive_disconnect'); return { ok: true }; },
+  async 'GET admin/config'(c) { need(c, [...SUPER, 'gm', 'cpa']); return { config: await c.db.all("SELECT * FROM config WHERE note NOT LIKE 'System:%' ORDER BY key") }; },
+  async 'POST admin/config/save'(c) {
+    need(c, [...SUPER, 'gm']);
+    const key = clean(c.body.key, 60), value = String(c.body.value ?? '').slice(0, 4000);
+    if (!(await c.db.first("SELECT 1 FROM config WHERE key = ? AND note NOT LIKE 'System:%'", key))) fail('Unknown setting');
+    if (/^\s*[[{]/.test(value)) { try { JSON.parse(value); } catch { fail('That value must be valid JSON.'); } }
+    await c.db.run('UPDATE config SET value = ? WHERE key = ?', value, key); await audit(c, 'config', key, value.slice(0, 200));
+    return { ok: true };
+  },
+};
+
+// ── shared intake for Squad / Studio requests (public, rate-limited) ──
+async function intake(c, type, maxDetails) {
+  await rate(c, type + ':' + c.ip, 5, 3600);
+  const b = c.body; const email = clean(b.email, 120);
+  if (!isEmail(email)) fail('Enter a valid email.');
+  await c.db.insert('platform_requests', { ts: now(), type, user_id: c.user?.id || '', name: clean(b.name, 80), email, company: clean(b.company, 120),
+    tier: clean(b.tier, 20), budget: clean(b.budget, 40), details: clean(b.details, maxDetails), status: 'new' });
+  return { ok: true };
+}
+
+async function fileResponse(c, key, filename) {
+  const obj = await getFile(c, key);
+  if (!obj) fail('File not found', 404);
+  const h = { 'content-type': obj.contentType, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff' };
+  if (filename) h['content-disposition'] = `attachment; filename="${filename}"`;
+  return new Response(obj.body, { headers: h });
+}
+
+async function turnstileOk(c, token) {
+  if (!c.env.TURNSTILE_SECRET) return true;
+  const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: new URLSearchParams({ secret: c.env.TURNSTILE_SECRET, response: token || '', remoteip: c.ip }) });
+  return !!(await r.json()).success;
+}
+

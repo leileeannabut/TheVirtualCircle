@@ -1,0 +1,96 @@
+// Shared helpers: HTTP, crypto, D1 access, config, rate limits, files.
+const enc = new TextEncoder();
+
+export class HttpError extends Error { constructor(message, status = 400) { super(message); this.status = status; } }
+export const fail = (msg, status = 400) => { throw new HttpError(msg, status); };
+export const json = (data, status = 200, headers = {}) =>
+  new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers } });
+
+export const now = () => Date.now();
+export const uid = () => crypto.randomUUID();
+export const round2 = (n) => Math.round(n * 100) / 100;
+export const pj = (s, d) => { try { return s === null || s === undefined || s === '' ? d : typeof s === 'string' ? JSON.parse(s) : s; } catch { return d; } };
+export const clean = (s, max = 500) => String(s ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max);
+export const isEmail = (s) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s);
+
+// ── crypto ──
+export const bytesToB64 = (buf) => { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s); };
+export const b64ToBytes = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const hex = (buf) => [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
+export const randHex = (n = 32) => hex(crypto.getRandomValues(new Uint8Array(n)));
+export const sha256 = async (s) => hex(await crypto.subtle.digest('SHA-256', enc.encode(s)));
+export async function hmac(secret, msg) {
+  const k = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return hex(await crypto.subtle.sign('HMAC', k, enc.encode(msg)));
+}
+export function safeEqual(a, b) {
+  a = String(a || ''); b = String(b || '');
+  if (!a || a.length !== b.length) return false;
+  let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
+// PBKDF2-SHA256, 100k iterations (the Workers maximum)
+export async function hashPw(pw, salt = crypto.getRandomValues(new Uint8Array(16))) {
+  const k = await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 100000 }, k, 256);
+  return bytesToB64(salt) + '$' + bytesToB64(bits);
+}
+export async function verifyPw(pw, stored) {
+  if (!stored || !stored.includes('$')) return false;
+  return safeEqual(await hashPw(pw, b64ToBytes(stored.split('$')[0])), stored);
+}
+
+// ── cookies ──
+const COOKIE = 'vc_session';
+export const sessionCookie = (token) => `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${14 * 86400}`;
+export const clearCookie = () => `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+export const cookieToken = (req) => ((req.headers.get('cookie') || '').match(/(?:^|;\s*)vc_session=([a-f0-9]{64})/) || [])[1] || '';
+
+// ── D1 ──
+const val = (v) => (v === undefined ? null : typeof v === 'boolean' ? (v ? 1 : 0) : v !== null && typeof v === 'object' ? JSON.stringify(v) : v);
+export function makeDb(D1) {
+  const stmt = (sql, ...b) => D1.prepare(sql).bind(...b.map(val));
+  return {
+    stmt,
+    first: (sql, ...b) => stmt(sql, ...b).first(),
+    all: async (sql, ...b) => (await stmt(sql, ...b).all()).results,
+    run: (sql, ...b) => stmt(sql, ...b).run(),
+    batch: (list) => D1.batch(list),
+    insertStmt(table, obj) {
+      const keys = Object.keys(obj).filter((k) => obj[k] !== undefined);
+      return stmt(`INSERT INTO ${table} (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`, ...keys.map((k) => obj[k]));
+    },
+    async insert(table, obj) {
+      if (!('id' in obj) && !['config', 'sessions', 'otps', 'rate_limits'].includes(table)) obj.id = uid();
+      await this.insertStmt(table, obj).run();
+      return obj;
+    },
+    updateStmt(table, id, patch, key = 'id') {
+      const keys = Object.keys(patch).filter((k) => patch[k] !== undefined);
+      return stmt(`UPDATE ${table} SET ${keys.map((k) => k + '=?').join(',')} WHERE ${key}=?`, ...keys.map((k) => patch[k]), id);
+    },
+    update(table, id, patch, key = 'id') { return this.updateStmt(table, id, patch, key).run(); },
+  };
+}
+
+// ── config (small table, loaded once per request) ──
+export async function loadConfig(db) {
+  const rows = await db.all('SELECT key, value FROM config');
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+}
+export const cfgNum = (c, k) => Number(c.cfg[k]) || 0;
+export const cfgJson = (c, k, d) => pj(c.cfg[k], d);
+
+// ── fixed-window rate limit stored in D1 ──
+export async function rate(c, key, max, sec = 60) {
+  const t = now();
+  const r = await c.db.first(
+    `INSERT INTO rate_limits (key, count, reset_at) VALUES (?, 1, ?)
+     ON CONFLICT(key) DO UPDATE SET count = CASE WHEN reset_at < ? THEN 1 ELSE count + 1 END,
+       reset_at = CASE WHEN reset_at < ? THEN excluded.reset_at ELSE reset_at END RETURNING count`, key, t + sec * 1000, t, t);
+  if (r && r.count > max) fail('Too many requests. Please wait a moment.', 429);
+}
+
+export async function audit(c, action, target, detail) {
+  await c.db.insert('audit', { ts: now(), actor: c.user ? c.user.id : 'system', action, target: target || '', detail: clean(detail, 500) });
+}

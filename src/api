@@ -1,0 +1,157 @@
+// The Virtual Circle API: JSON routes (/api/*), payment webhooks, and background jobs.
+// Runs as a Cloudflare Pages Function (functions/api/[[path]].js); the static site is public/.
+import { json, HttpError, makeDb, loadConfig, cookieToken, sessionCookie, clearCookie, randHex, sha256, hmac, safeEqual, now } from './lib.js';
+import { SCHEMA_VERSION, MIGRATIONS } from './schema.js';
+import { ROUTES } from './routes.js';
+import { SOCIAL_ROUTES } from './social.js';
+import { MEMBERSHIP_ROUTES } from './membership.js';
+import { COMEDY_ROUTES } from './comedy.js';
+import { HOST_ROUTES, runHosts } from './hosts.js';
+import { processPayment, runPayouts } from './payments.js';
+import { ingest } from './ingest.js';
+
+let schemaReady = false;
+// Creates or upgrades the tables on first use, so no migration command is ever needed.
+async function ensureSchema(env) {
+  if (schemaReady) return;
+  let version = 0;
+  try { version = Number((await env.DB.prepare("SELECT value FROM config WHERE key = 'schema_version'").first())?.value) || 0; }
+  catch { version = 0; } // config table does not exist yet
+  for (let v = version + 1; v <= SCHEMA_VERSION; v++) {
+    const stmts = MIGRATIONS[v].map((sql) => env.DB.prepare(sql));
+    stmts.push(env.DB.prepare("INSERT OR REPLACE INTO config (key, value, note) VALUES ('schema_version', ?, 'System: database version (do not edit)')").bind(String(v)));
+    try { await env.DB.batch(stmts); }
+    catch (e) { if (!/already exists|duplicate column/i.test(e.message)) throw e; } // another request created it at the same moment
+  }
+  schemaReady = true;
+}
+
+// Pages has no cron, so background jobs are started by ordinary traffic and run after the response is sent.
+// A conditional UPDATE claims each run, so only one request ever starts it.
+async function runDueJobs(c, ctx) {
+  const manila = new Date(Date.now() + 8 * 3600e3);
+  const today = manila.toISOString().slice(0, 10);
+  if (manila.getUTCHours() >= 2 && c.cfg.last_payout_date !== today) {
+    const r = await c.db.run("UPDATE config SET value = ? WHERE key = 'last_payout_date' AND value <> ?", today, today);
+    if (r.meta.changes) ctx.waitUntil((async () => { await runPayouts(c); await cleanup(c); })().catch((e) => console.error('payouts', e)));
+  }
+  const last = Number(c.cfg.last_ingest_at) || 0;
+  if (now() - last > 6 * 3600e3) {
+    const r = await c.db.run("UPDATE config SET value = ? WHERE key = 'last_ingest_at' AND value = ?", String(now()), String(c.cfg.last_ingest_at || '0'));
+    if (r.meta.changes) ctx.waitUntil(ingest(c).catch((e) => console.error('ingest', e)));
+  }
+  // Circle Hosts: every 10 minutes at most (not automatic in local tests, where /api/__dev/hosts drives them)
+  const lastHosts = Number(c.cfg.last_hosts_tick) || 0;
+  if (c.cfg.hosts_enabled === 'true' && now() - lastHosts > 10 * 60000 && c.env.DEV_MODE !== 'true') {
+    const r = await c.db.run("UPDATE config SET value = ? WHERE key = 'last_hosts_tick' AND value = ?", String(now()), String(c.cfg.last_hosts_tick || '0'));
+    if (r.meta.changes) ctx.waitUntil(runHosts(c).catch((e) => console.error('hosts', e)));
+  }
+}
+
+export async function handleApi(request, env, ctx) {
+    const url = new URL(request.url);
+    const path = url.pathname.slice(5).replace(/\/+$/, '');
+    if (!env.DB) return json({ error: 'Setup needed: add the D1 database binding "DB" in Cloudflare → Pages project → Settings → Bindings, then redeploy.' }, 503);
+    const c = { env, origin: url.origin, db: makeDb(env.DB), ip: request.headers.get('cf-connecting-ip') || '127.0.0.1', ua: (request.headers.get('user-agent') || '').slice(0, 200), query: Object.fromEntries(url.searchParams), body: {} };
+    try {
+      await ensureSchema(env);
+      c.cfg = await loadConfig(c.db);
+      if (ctx && ctx.waitUntil && !path.startsWith('__dev/')) await runDueJobs(c, ctx).catch((e) => console.error('jobs', e));
+      if (path.startsWith('webhooks/')) return await webhook(c, path.slice(9), request);
+      if (path.startsWith('__dev/')) return await devRoute(c, path.slice(6), request);
+      const method = request.method === 'HEAD' ? 'GET' : request.method;
+      const handler = ROUTES[`${method} ${path}`] || SOCIAL_ROUTES[`${method} ${path}`] || MEMBERSHIP_ROUTES[`${method} ${path}`] || COMEDY_ROUTES[`${method} ${path}`] || HOST_ROUTES[`${method} ${path}`];
+      if (!handler) return json({ error: 'Not found' }, 404);
+      // CSRF: state-changing requests must come from our own origin
+      if (method === 'POST' && request.headers.get('origin') !== url.origin) return json({ error: 'Bad origin' }, 403);
+      if (method === 'POST') {
+        const ct = request.headers.get('content-type') || '';
+        if (ct.includes('multipart/form-data')) { const f = await request.formData(); for (const [k, v] of f.entries()) c.body[k] = v; }
+        else c.body = await request.json().catch(() => ({}));
+      }
+      c.token = cookieToken(request);
+      c.user = await userFromToken(c);
+      const out = await handler(c);
+      if (out instanceof Response) return out;
+      const headers = {};
+      if (out._session) { const token = randHex(32); await c.db.insert('sessions', { token_hash: await sha256(token), user_id: out._session, expires_at: now() + 14 * 864e5, ip: c.ip, ua: c.ua }); headers['set-cookie'] = sessionCookie(token); delete out._session; }
+      if (out._clearSession) { headers['set-cookie'] = clearCookie(); delete out._clearSession; }
+      return json(out, 200, headers);
+    } catch (e) {
+      if (e instanceof HttpError) return json({ error: e.message }, e.status);
+      console.error(e && e.stack ? e.stack : e);
+      return json({ error: 'Something went wrong. Please try again.' }, 500);
+    }
+}
+
+async function userFromToken(c) {
+  if (!c.token) return null;
+  const u = await c.db.first(`SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ? AND u.status <> 'banned'`, await sha256(c.token), now());
+  if (u && (!u.last_seen || now() - u.last_seen > 3600e3)) await c.db.update('users', u.id, { last_seen: now() });
+  return u || null;
+}
+
+async function cleanup(c) {
+  await c.db.batch([
+    c.db.stmt('DELETE FROM sessions WHERE expires_at < ?', now()),
+    c.db.stmt('DELETE FROM otps WHERE expires_at < ?', now()),
+    c.db.stmt('DELETE FROM rate_limits WHERE reset_at < ?', now()),
+  ]);
+}
+
+// ── Payment webhooks: verify the provider signature, then apply the payment once ──
+async function webhook(c, provider, request) {
+  if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  const raw = await request.text(); const env = c.env;
+  let event;
+  if (provider === 'paymongo') {
+    // Paymongo-Signature: t=<unix>,te=<test sig>,li=<live sig>;  sig = HMAC_SHA256(secret, `${t}.${raw}`)
+    const parts = Object.fromEntries((request.headers.get('paymongo-signature') || '').split(',').map((p) => p.trim().split('=')));
+    if (!env.PAYMONGO_WEBHOOK_SECRET || !parts.t) return json({ error: 'Unsigned' }, 401);
+    if (Math.abs(Date.now() / 1000 - Number(parts.t)) > 300) return json({ error: 'Stale signature' }, 401);
+    const expected = await hmac(env.PAYMONGO_WEBHOOK_SECRET, `${parts.t}.${raw}`);
+    if (!safeEqual(expected, parts.li) && !safeEqual(expected, parts.te)) return json({ error: 'Bad signature' }, 401);
+    const e = JSON.parse(raw);
+    if (e.data?.attributes?.type !== 'checkout_session.payment.paid') return json({ ignored: true });
+    const cs = e.data.attributes.data; const meta = cs.attributes.metadata || {};
+    const cents = cs.attributes.payments?.[0]?.attributes?.amount ?? cs.attributes.line_items?.[0]?.amount ?? 0;
+    event = { provider: 'paymongo', event_id: e.data.id, raw_id: cs.id, amount: cents / 100, currency: 'PHP', ref_type: meta.ref_type, ref_id: meta.ref_id, user_id: meta.user_id };
+  } else if (provider === 'xendit') {
+    // Xendit authenticates callbacks with the account's verification token; an extra HMAC check runs if XENDIT_WEBHOOK_HMAC is set.
+    if (!env.XENDIT_CALLBACK_TOKEN || !safeEqual(request.headers.get('x-callback-token'), env.XENDIT_CALLBACK_TOKEN)) return json({ error: 'Bad token' }, 401);
+    if (env.XENDIT_WEBHOOK_HMAC && !safeEqual(await hmac(env.XENDIT_WEBHOOK_HMAC, raw), request.headers.get('x-signature'))) return json({ error: 'Bad signature' }, 401);
+    const e = JSON.parse(raw);
+    if (e.status !== 'PAID' || !e.external_id) return json({ ignored: true });
+    const [ref_type, ref_id, user_id] = String(e.external_id).split('|');
+    event = { provider: 'xendit', event_id: 'xendit_' + e.id, raw_id: e.id, amount: Number(e.paid_amount || e.amount), currency: e.currency || 'PHP', ref_type, ref_id, user_id };
+  } else return json({ error: 'Unknown provider' }, 404);
+  if (!event.ref_type || !event.ref_id || !event.user_id) return json({ ignored: true, reason: 'no metadata' });
+  c.user = { id: 'webhook:' + provider };
+  await processPayment(c, event);
+  return json({ ok: true });
+}
+
+// ── Local-only helpers for the e2e test. Disabled unless DEV_MODE=true AND the request is to localhost. ──
+async function devRoute(c, path, request) {
+  const host = new URL(request.url).hostname;
+  if (c.env.DEV_MODE !== 'true' || !['localhost', '127.0.0.1'].includes(host)) return json({ error: 'Not found' }, 404);
+  if (path === 'otp') {
+    const row = await c.db.first("SELECT detail FROM audit WHERE action = 'dev_sms' AND target = ? ORDER BY ts DESC LIMIT 1", c.query.mobile);
+    return json({ code: (row?.detail.match(/code is (\d{6})/) || [])[1] || null });
+  }
+  if (path === 'role' && request.method === 'POST') {
+    const b = await request.json(); const patch = {};
+    if (b.role) patch.role = b.role; if (b.status) patch.status = b.status;
+    await c.db.update('users', b.email, patch, 'email'); return json({ ok: true });
+  }
+  if (path === 'cron' && request.method === 'POST') return json(c.query.job === 'payouts' ? await runPayouts(c) : await ingest(c));
+  if (path === 'feed') return json({ jobs: [ // a local JSON job feed so the ingestion pipeline can be exercised offline
+    { title: 'Customer Support VA (US e-commerce)', company: 'Brightcart LLC', candidate_required_location: 'Philippines', salary: '$6/hr', tags: ['support', 'shopify'], url: 'https://example.com/jobs/1' },
+    { title: 'Data entry — earn $50/hr, no experience', company: 'Quick Hire Global', candidate_required_location: 'Remote', salary: '$50/hr', description: 'Pay a refundable training fee then message HR on Telegram. Paid in USDT.', url: 'https://example.com/jobs/2' },
+    { title: 'Executive Assistant to SaaS CEO', company: 'Northwind Labs', candidate_required_location: 'APAC', salary: '$1,200/mo', tags: ['calendar', 'email'], url: 'https://example.com/jobs/3' }] });
+  if (path === 'payouts') return json(await c.db.all('SELECT * FROM payouts'));
+  if (path === 'hosts' && request.method === 'POST') { const b = await request.json().catch(() => ({})); return json(await runHosts(c, { force: b.force !== false, clock: b.clock, at: b.at })); }
+  if (path === 'age_post' && request.method === 'POST') { const b = await request.json(); await c.db.run('UPDATE posts SET ts = ? WHERE id = ?', now() - (b.hours || 4) * 3600e3, b.id); return json({ ok: true }); }
+  if (path === 'gig_past' && request.method === 'POST') { const b = await request.json(); await c.db.run('UPDATE gig_bookings SET scheduled_at = ? WHERE id = ?', now() - 3600e3, b.id); return json({ ok: true }); }
+  return json({ error: 'Not found' }, 404);
+}

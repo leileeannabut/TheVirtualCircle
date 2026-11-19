@@ -1,0 +1,222 @@
+// Checkouts (PayMongo / Xendit), payment processing with fee splits, daily payouts and BIR 2307 PDFs.
+import { fail, now, uid, round2, cfgNum, audit } from './lib.js';
+import { putFile, storageMode } from './storage.js';
+import { autoReleaseGigs } from './membership.js';
+
+const basic = (key) => 'Basic ' + btoa(key + ':');
+
+// One entry point: PHP → PayMongo Checkout; other currencies → Xendit Invoice.
+export async function checkout(c, o) {
+  const meta = { ref_type: o.ref_type, ref_id: o.ref_id, user_id: c.user.id };
+  const currency = o.currency || 'PHP';
+  const back = (c.cfg.site_url || '') + (o.back || '/app.html');
+  if (c.env.DEV_MODE === 'true' && !c.env.PAYMONGO_SECRET_KEY && !c.env.XENDIT_SECRET_KEY) {
+    await processPayment(c, { provider: 'dev', event_id: 'dev_' + uid(), amount: o.amount, currency, ...meta });
+    return { paid: true, dev: true };
+  }
+  if (currency === 'PHP' && c.env.PAYMONGO_SECRET_KEY) {
+    const r = await fetch('https://api.paymongo.com/v1/checkout_sessions', {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: basic(c.env.PAYMONGO_SECRET_KEY) },
+      body: JSON.stringify({ data: { attributes: {
+        line_items: [{ name: o.description, amount: Math.round(o.amount * 100), currency: 'PHP', quantity: 1 }],
+        payment_method_types: ['gcash', 'paymaya', 'grab_pay', 'card'], description: o.description, send_email_receipt: true,
+        success_url: back + (back.includes('?') ? '&' : '?') + 'paid=1', cancel_url: back, metadata: meta } } }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { console.error('PayMongo', JSON.stringify(d)); fail('Could not start checkout. Please try again.', 502); }
+    return { checkout_url: d.data.attributes.checkout_url };
+  }
+  if (c.env.XENDIT_SECRET_KEY) {
+    const r = await fetch('https://api.xendit.co/v2/invoices', {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: basic(c.env.XENDIT_SECRET_KEY) },
+      body: JSON.stringify({ external_id: [o.ref_type, o.ref_id, c.user.id, uid().slice(0, 8)].join('|'), amount: o.amount, currency,
+        description: o.description, payer_email: c.user.email, success_redirect_url: back + '?paid=1', failure_redirect_url: back }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { console.error('Xendit', JSON.stringify(d)); fail('Could not create the invoice.', 502); }
+    return { checkout_url: d.invoice_url };
+  }
+  fail('Payments are not configured yet.', 503);
+}
+
+// Applies one verified payment: ledger row, fee splits, referral share, and the paid item's state change.
+// All writes go in a single D1 batch (atomic); the unique index on payment event_id makes replays no-ops.
+export async function processPayment(c, p) {
+  const { db } = c;
+  if (await db.first("SELECT 1 FROM transactions_ledger WHERE event_id = ? AND type = 'payment'", p.event_id)) return { duplicate: true };
+  const amount = Number(p.amount) || 0, cur = p.currency || 'PHP', ts = now();
+  const payId = uid();
+  const stmts = [];
+  const commission = (payee, amt, reason, status = 'unpaid') => {
+    amt = round2(amt); if (!payee || amt <= 0) return 0;
+    stmts.push(db.insertStmt('transactions_ledger', { id: uid(), ts, event_id: p.event_id, provider: p.provider, type: 'commission', ref_type: p.ref_type, ref_id: p.ref_id,
+      payer_id: p.user_id, payee_id: payee, gross: amt, fee: 0, net: amt, currency: cur, status, meta: { reason, payment: payId } }));
+    return amt;
+  };
+  const addBadgeStmt = (badge) => db.stmt(`UPDATE users SET badges = json_insert(badges, '$[#]', ?) WHERE id = ? AND instr(badges, ?) = 0`, badge, p.user_id, JSON.stringify(badge));
+  let platform = amount, unmatched = '';
+  if (p.ref_type === 'support') {
+    const it = await db.first('SELECT * FROM support_intents WHERE id = ? AND user_id = ?', p.ref_id, p.user_id);
+    const u = await db.first('SELECT name FROM users WHERE id = ?', p.user_id);
+    if (!it || !u) unmatched = 'support intent or member not found';
+    else {
+      const days = cfgNum(c, 'supporter_days') || 30;
+      const first = u.name.split(' ')[0], initial = (u.name.split(' ')[1] || '')[0];
+      stmts.push(db.stmt('UPDATE users SET supporter_until = MAX(supporter_until, ?) + ?, support_total = support_total + ? WHERE id = ?', now(), days * 864e5, amount, p.user_id), addBadgeStmt('Glow Keeper'));
+      stmts.push(db.insertStmt('supporters', { id: uid(), ts, user_id: p.user_id, amount, display: it.anonymous ? 'A Glow Keeper' : first + (initial ? ' ' + initial + '.' : ''), message: it.message || '', event_id: p.event_id, hidden: 0 }));
+    }
+  } else if (p.ref_type === 'rage') {
+    // Credit exactly what was bought (snapshot in rage_purchases), once.
+    const pu = await db.first('SELECT * FROM rage_purchases WHERE id = ? AND user_id = ? AND credited = 0', p.ref_id, p.user_id);
+    if (!pu) unmatched = 'Rage Room purchase not found or already credited';
+    else stmts.push(db.stmt('UPDATE rage_purchases SET credited = 1 WHERE id = ?', pu.id),
+      db.stmt('INSERT INTO rage_wallet (user_id, tier, throws) VALUES (?, ?, ?) ON CONFLICT(user_id, tier) DO UPDATE SET throws = throws + excluded.throws', p.user_id, pu.tier, pu.throws));
+  } else if (p.ref_type === 'gig') {
+    const bk = await db.first('SELECT * FROM gig_bookings WHERE id = ? AND mentee_id = ?', p.ref_id, p.user_id);
+    if (!bk) unmatched = 'gig booking not found';
+    else if (bk.paid) unmatched = 'gig booking was already paid (duplicate payment; refund it)';
+    else {
+      // Held until the mentee confirms the session (or it auto-releases after gig_release_days with no dispute).
+      platform = amount - commission(bk.mentor_id, amount * cfgNum(c, 'gig_mentor_pct') / 100, 'teaching gig', 'held');
+      stmts.push(db.stmt("UPDATE gig_bookings SET paid = 1, status = 'confirmed' WHERE id = ?", bk.id));
+      stmts.push(db.stmt('UPDATE mentor_gigs SET bookings = bookings + 1 WHERE id = ?', bk.gig_id));
+      stmts.push(db.insertStmt('notifications', { id: uid(), user_id: bk.mentor_id, ts, type: 'gig', text: `New booking: "${bk.gig_title}" on ${new Date(bk.scheduled_at + 8 * 3600e3).toISOString().slice(0, 16).replace('T', ' ')} (Manila)`, link: '/mentor.html#teaching', read: 0 }));
+    }
+  } else if (p.ref_type === 'pro') {
+    const u = await db.first('SELECT pro_until FROM users WHERE id = ?', p.user_id);
+    if (!u) unmatched = 'member not found';
+    else stmts.push(db.stmt('UPDATE users SET pro_until = MAX(pro_until, ?) + ? WHERE id = ?', now(), 30 * 864e5, p.user_id), addBadgeStmt('Pro'));
+  } else if (p.ref_type === 'boost') {
+    if (!(await db.first('SELECT 1 FROM posts WHERE id = ?', p.ref_id))) unmatched = 'post not found';
+    else stmts.push(db.stmt('UPDATE posts SET boosted_until = MAX(boosted_until, ?) + ? WHERE id = ?', now(), 7 * 864e5, p.ref_id));
+  } else if (p.ref_type === 'job_post') {
+    if (!(await db.first('SELECT 1 FROM jobs WHERE id = ?', p.ref_id))) unmatched = 'job post not found';
+    else stmts.push(db.stmt("UPDATE jobs SET status = 'live', ingested_at = ? WHERE id = ?", now(), p.ref_id));
+  } else if (p.ref_type === 'unlock') {
+    const m = await db.first('SELECT status FROM matches_and_unlocks WHERE id = ?', p.ref_id);
+    if (!m) unmatched = 'unlock not found';
+    else if (m.status === 'unlocked') unmatched = 'already unlocked (duplicate payment; refund it)';
+    else stmts.push(db.stmt("UPDATE matches_and_unlocks SET status = 'unlocked' WHERE id = ?", p.ref_id));
+  } else if (p.ref_type === 'consult') {
+    const cons = await db.first('SELECT c.*, p.user_id AS prac_user FROM consultations c JOIN practitioners p ON p.id = c.practitioner_id WHERE c.id = ?', p.ref_id);
+    if (!cons) unmatched = 'consultation not found';
+    else if (cons.paid) unmatched = 'consultation already paid (duplicate payment; refund it)';
+    else {
+      const fee = round2(amount * cfgNum(c, 'consult_platform_pct') / 100);
+      commission(cons.prac_user, amount - fee, 'consultation'); platform = fee;
+      stmts.push(db.updateStmt('consultations', cons.id, { paid: 1, status: 'confirmed', platform_fee: fee }));
+    }
+  } else if (p.ref_type === 'module') {
+    const m = await db.first('SELECT m.*, t.user_id AS mentor_user FROM modules m JOIN mentors t ON t.id = m.mentor_id WHERE m.id = ?', p.ref_id);
+    if (!m) unmatched = 'module not found';
+    else {
+      platform = amount - commission(m.mentor_user, amount * m.mentor_split_pct / 100, 'module sale');
+      stmts.push(db.stmt('UPDATE modules SET sales = sales + 1 WHERE id = ?', m.id));
+    }
+  } else if (p.ref_type === 'squad') {
+    const sq = await db.first('SELECT * FROM squads WHERE id = ?', p.ref_id);
+    if (!sq) unmatched = 'squad not found';
+    else {
+      const lead = commission(sq.leader_id, amount * cfgNum(c, 'squad_leader_pct') / 100, 'pod leader');
+      const members = sq.members.split(',').map((x) => x.trim()).filter(Boolean);
+      const each = members.reduce((a, m) => a + commission(m, amount * cfgNum(c, 'squad_members_pct') / 100 / members.length, 'squad member'), 0);
+      platform = amount - lead - each;
+    }
+  } else if (p.ref_type !== 'studio') unmatched = 'unknown payment type ' + p.ref_type;
+
+  if (unmatched) { // keep the money on record, credit nothing, and ask Finance to look
+    stmts.length = 0; platform = 0;
+    stmts.push(db.insertStmt('platform_requests', { id: uid(), ts, type: 'payment_review', user_id: p.user_id || '', name: 'Payment needs review', email: '', company: p.provider, tier: p.ref_type,
+      budget: `${cur} ${amount}`, details: `Payment ${p.event_id} for ${p.ref_type} ${p.ref_id}: ${unmatched}`, status: 'new' }));
+  }
+  stmts.unshift(db.insertStmt('transactions_ledger', { id: payId, ts, event_id: p.event_id, provider: p.provider, type: 'payment', ref_type: p.ref_type, ref_id: p.ref_id,
+    payer_id: p.user_id, gross: amount, fee: 0, net: amount, currency: cur, status: unmatched ? 'needs_review' : 'settled', meta: { raw_id: p.raw_id || '', issue: unmatched } }));
+  const payer = await db.first('SELECT referred_by FROM users WHERE id = ?', p.user_id);
+  if (payer?.referred_by && platform > 0 && p.ref_type !== 'support') { // contributions are not commissionable
+    const ref = await db.first("SELECT id FROM users WHERE referral_code = ? AND account_type <> 'host'", payer.referred_by);
+    if (ref && ref.id !== p.user_id) commission(ref.id, platform * cfgNum(c, 'referral_pct') / 100, 'referral', p.ref_type === 'gig' ? 'held' : 'unpaid');
+  }
+  try { await db.batch(stmts); }
+  catch (e) { if (/UNIQUE/i.test(String(e.message))) return { duplicate: true }; throw e; }
+  await audit(c, 'payment_' + p.ref_type, p.ref_id, `${cur} ${amount} via ${p.provider}${unmatched ? ' · NEEDS REVIEW: ' + unmatched : ''}`);
+  return unmatched ? { ok: true, needs_review: unmatched } : { ok: true };
+}
+
+// ── Daily payouts ──
+export async function runPayouts(c) {
+  const { db } = c;
+  await autoReleaseGigs(c);
+  // Banned or suspended members' earnings wait until Ops resolves their case.
+  const groups = await db.all(`SELECT l.payee_id, l.currency, SUM(l.net) AS gross, COUNT(*) AS n FROM transactions_ledger l JOIN users u ON u.id = l.payee_id
+    WHERE l.type = 'commission' AND l.status = 'unpaid' AND u.status NOT IN ('banned', 'suspended') AND u.account_type <> 'host' GROUP BY l.payee_id, l.currency HAVING SUM(l.net) > 0`);
+  const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10); // Manila date
+  const done = [];
+  for (const g of groups) {
+    const payee = await db.first('SELECT * FROM users WHERE id = ?', g.payee_id); if (!payee) continue;
+    const gross = round2(g.gross), rate = payee.ewt_rate ?? (Number(c.cfg.ewt_rate_default) || 0.05);
+    const ewt = round2(gross * rate), net = round2(gross - ewt);
+    const po = { id: uid(), date: today, payee_id: payee.id, currency: g.currency, gross, ewt_rate: rate, ewt, net, status: 'processing' };
+    // Claim exactly the rows we summed; a concurrent run would find none left.
+    const claim = await db.batch([
+      db.insertStmt('payouts', po),
+      db.stmt("UPDATE transactions_ledger SET status = 'paid_out', payout_id = ? WHERE type = 'commission' AND status = 'unpaid' AND payee_id = ? AND currency = ?", po.id, payee.id, g.currency),
+      db.insertStmt('transactions_ledger', { id: uid(), ts: now(), event_id: 'payout_' + po.id, provider: 'internal', type: 'payout', ref_type: 'payout', ref_id: po.id,
+        payee_id: payee.id, gross, fee: ewt, net, currency: g.currency, status: 'processing' }),
+    ]);
+    if (!claim[1].meta.changes) { await db.run('DELETE FROM payouts WHERE id = ?', po.id); continue; }
+    let file = '';
+    try { file = await form2307(c, po, payee); } catch (e) { console.error('2307', e); }
+    const ref = await disburse(c, po, payee);
+    await db.update('payouts', po.id, { status: ref ? 'sent' : 'pending_manual', provider_ref: ref, form2307_file: file });
+    done.push({ payee: payee.name, gross, ewt, net, currency: g.currency });
+  }
+  return { payouts: done };
+}
+
+async function disburse(c, po, payee) {
+  if (!c.env.XENDIT_SECRET_KEY || po.currency !== 'PHP') return '';
+  const r = await fetch('https://api.xendit.co/v2/payouts', {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: basic(c.env.XENDIT_SECRET_KEY), 'idempotency-key': po.id },
+    body: JSON.stringify({ reference_id: po.id, channel_code: 'PH_GCASH', amount: po.net, currency: 'PHP', description: 'The Virtual Circle payout ' + po.date,
+      channel_properties: { account_holder_name: payee.name, account_number: (payee.payout_account || payee.mobile).replace('+63', '0') } }),
+  });
+  return r.ok ? (await r.json()).id || 'sent' : '';
+}
+
+// ── BIR Form 2307 (simplified certificate) as a real PDF stored in R2 ──
+async function form2307(c, po, payee) {
+  const d = new Date(); const q = Math.floor(d.getUTCMonth() / 3);
+  const fmt = (x) => `${String(x.getUTCMonth() + 1).padStart(2, '0')}/${String(x.getUTCDate()).padStart(2, '0')}/${x.getUTCFullYear()}`;
+  const from = fmt(new Date(Date.UTC(d.getUTCFullYear(), q * 3, 1))), to = fmt(new Date(Date.UTC(d.getUTCFullYear(), q * 3 + 3, 0)));
+  const money = (n) => po.currency + ' ' + Number(n).toFixed(2);
+  const lines = [
+    [18, 'BIR Form No. 2307'], [11, 'Certificate of Creditable Tax Withheld at Source'], [10, ''], [10, `For the period: ${from} to ${to}`], [10, ''],
+    [12, 'Part I - Payee Information'], [10, `TIN: ${payee.tin || 'NOT ON FILE'}`], [10, `Name: ${payee.name}`], [10, `Address: ${payee.address || '-'}`], [10, ''],
+    [12, 'Part II - Payor Information'], [10, `TIN: ${c.cfg.company_tin}`], [10, `Name: ${c.cfg.company_name}`], [10, `Address: ${c.cfg.company_address}`], [10, ''],
+    [12, 'Part III - Details of Income Payment and Tax Withheld'],
+    [10, `Income payment: Commission / professional fee   ATC: ${po.ewt_rate >= 0.1 ? 'WI011' : 'WI010'}`],
+    [10, `Payout date: ${po.date}`], [10, `Amount of income payment: ${money(po.gross)}`], [10, `Rate: ${Math.round(po.ewt_rate * 100)}%`],
+    [10, `Tax withheld: ${money(po.ewt)}`], [10, `Net paid: ${money(po.net)}`], [10, ''], [9, `Reference: payout ${po.id}`],
+    [9, 'System-generated. To be reviewed and signed by the payor\'s authorised representative / CPA before release.'],
+  ];
+  if (storageMode(c) === 'none') return ''; // no storage connected yet; the payout still completes
+  return putFile(c, { folder: 'bir-2307', name: `2307-${po.date}-${payee.name.replace(/\W+/g, '_')}-${po.id.slice(0, 8)}.pdf`, bytes: simplePdf(lines), contentType: 'application/pdf' });
+}
+
+// Minimal single-page PDF writer (Helvetica, ASCII text).
+export function simplePdf(lines) {
+  const esc = (s) => String(s).replace(/[^\x20-\x7e]/g, '?').replace(/([\\()])/g, '\\$1');
+  let y = 790; const ops = ['BT'];
+  for (const [size, text] of lines) { ops.push(`/F1 ${size} Tf 1 0 0 1 56 ${y} Tm (${esc(text)}) Tj`); y -= size + 8; }
+  ops.push('ET');
+  const stream = ops.join('\n');
+  const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`];
+  let out = '%PDF-1.4\n'; const offs = [];
+  objs.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+  const xref = out.length;
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map((o) => String(o).padStart(10, '0') + ' 00000 n \n').join('');
+  out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return new TextEncoder().encode(out);
+}

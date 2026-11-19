@@ -1,0 +1,92 @@
+// Anti-scam engine, Gemini, SMS — shared by the API routes and scheduled jobs.
+import { clean, cfgJson, now, pj } from './lib.js';
+
+// ── Behavioural flagging ──
+export const OFF_PLATFORM = /(whats\s?app|wa\.me|telegram|t\.me\/|viber|signal\s?app|wechat|skype|discord\.gg|(\+?63|0)\s?9\d{2}[\s-]?\d{3}[\s-]?\d{4}|[\w.+-]+@[\w-]+\.[\w.]+|gcash\s?(me|number)|dm me (on|at))/i;
+
+export async function penalize(c, user, rule, detail, severity) {
+  const pts = cfgJson(c, 'penalty_points', {})[rule] || 1;
+  const th = cfgJson(c, 'penalty_thresholds', { warn: 3, mute: 6, suspend: 10, ban: 15 });
+  const total = (Number(user.risk_points) || 0) + pts;
+  let action = 'logged';
+  const patch = { risk_points: total };
+  if (total >= th.ban) { action = 'ban'; patch.status = 'banned'; }
+  else if (total >= th.suspend) { action = 'suspend'; patch.status = 'suspended'; }
+  else if (total >= th.mute) { action = 'mute_24h'; patch.muted_until = now() + 86400000; }
+  else if (total >= th.warn) action = 'warn';
+  Object.assign(user, patch);
+  await c.db.batch([
+    c.db.updateStmt('users', user.id, patch),
+    c.db.insertStmt('escalation_logs', { id: crypto.randomUUID(), ts: now(), user_id: user.id, rule, severity: severity || (pts >= 5 ? 'high' : 'medium'),
+      points: pts, action, detail: clean(detail, 500), status: 'open' }),
+  ]);
+  if (patch.status === 'banned') await c.db.run('DELETE FROM sessions WHERE user_id = ?', user.id);
+  return action;
+}
+
+export async function screenText(c, user, text) {
+  const res = { text, flagged: false, action: null };
+  if (OFF_PLATFORM.test(text)) {
+    res.flagged = true;
+    res.text = text.replace(new RegExp(OFF_PLATFORM.source, 'gi'), '[hidden: keep it on-platform]');
+    res.action = await penalize(c, user, 'off_platform', 'Tried to move contact off-platform: ' + text.slice(0, 200));
+  }
+  const recent = await c.db.first('SELECT COUNT(*) n FROM messages WHERE user_id = ? AND ts > ?', user.id, now() - 60000);
+  if (recent.n === 8) res.action = await penalize(c, user, 'rapid_messaging', '9+ messages within a minute');
+  return res;
+}
+
+// ── Scam scanning ──
+const RED_FLAGS = [
+  { w: 4, re: /(training|registration|processing|starter|onboarding|application)\s*(fee|kit|payment)|pay\s*(first|upfront|before)|(send|pay)\s+(a\s+)?deposit|refundable fee/i, label: 'Asks for an upfront fee' },
+  { w: 4, re: /\b(usdt|crypto|bitcoin|btc|eth|binance|trust\s?wallet|metamask)\b/i, label: 'Crypto payouts or payments' },
+  { w: 3, re: /(\$|usd|php|₱)\s?\d{2,}[,\d]*\s*(\/|per)\s*(hr|hour|day)|earn\s+\$?\d{3,}.*(daily|a day|per day)|no experience.*(high|big) (pay|income)/i, label: 'Unrealistic pay for the work' },
+  { w: 3, re: /telegram|whats\s?app|wa\.me|t\.me|viber/i, label: 'Moves you to Telegram/WhatsApp' },
+  { w: 4, re: /(like|rate|review)\s+(videos|posts|products|hotels)|commission per task|task (bonus|reward)|recharge/i, label: 'Pay-per-task / "recharge" scheme' },
+  { w: 1, re: /urgent(ly)? hiring|limited slots|today only|act now|immediate start no interview/i, label: 'Pressure and urgency' },
+  { w: 2, re: /send (us )?(your )?(id|passport|bank|otp|card|password)/i, label: 'Asks for sensitive data early' },
+  { w: 2, re: /no interview|hired instantly|guaranteed (job|income)/i, label: 'No interview / guaranteed income' },
+];
+const ratingOf = (score) => (score >= 50 ? 'danger' : score >= 20 ? 'caution' : 'safe');
+export function heuristicScan(text) {
+  const flags = RED_FLAGS.filter((f) => f.re.test(text));
+  const score = Math.min(100, flags.reduce((a, f) => a + f.w, 0) * 10);
+  return { rating: ratingOf(score), score, flags: flags.map((f) => f.label),
+    summary: flags.length ? 'Red flags found: ' + flags.map((f) => f.label).join('; ') + '.' : 'No common red flags found. Still verify the company.' };
+}
+export async function scanText(c, text) {
+  const h = heuristicScan(text);
+  const ai = await gemini(c, 'Analyse this job offer or agency pitch sent to a virtual assistant. Return JSON ' +
+    '{"rating":"safe|caution|danger","score":0-100 (risk),"flags":[short strings],"summary":"2 sentences, plain English"}. ' +
+    'Watch for upfront fees, crypto payouts, unrealistic rates, Telegram/WhatsApp redirection, pay-per-task, identity harvesting.\n\nTEXT:\n' + text.slice(0, 6000), { json: true, temperature: 0.2 });
+  if (!ai || !ai.rating) return { ...h, engine: 'rules' };
+  const score = Math.max(Number(ai.score) || 0, h.score);
+  const flags = [...(ai.flags || []), ...h.flags.filter((f) => !(ai.flags || []).includes(f))].slice(0, 8);
+  return { rating: ratingOf(score), score, flags, summary: String(ai.summary || h.summary), engine: 'gemini' };
+}
+
+// ── Gemini ──
+export async function gemini(c, prompt, opt = {}) {
+  const key = c.env.GEMINI_API_KEY; if (!key) return null;
+  const body = { contents: opt.contents || [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: opt.temperature ?? 0.7 } };
+  if (opt.system) body.systemInstruction = { parts: [{ text: opt.system }] };
+  if (opt.json) body.generationConfig.responseMimeType = 'application/json';
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${c.cfg.gemini_model || 'gemini-2.5-flash'}:generateContent`,
+      { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body), signal: AbortSignal.timeout(opt.timeout || 15000) });
+    if (!r.ok) { console.error('Gemini', r.status, (await r.text()).slice(0, 300)); return null; }
+    const d = await r.json();
+    const t = (d.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
+    return opt.json ? pj(t.replace(/^```(json)?|```$/g, '').trim(), null) : t;
+  } catch (e) { console.error(e); return null; }
+}
+
+// ── SMS (Semaphore). Without a key, codes go to the Worker log (and the dev outbox locally). ──
+export async function sendSms(c, to, message) {
+  if (!c.env.SEMAPHORE_KEY) {
+    console.log(`[DEV SMS] ${to}: ${message}`);
+    if (c.env.DEV_MODE === 'true') await c.db.run('INSERT INTO audit (id, ts, actor, action, target, detail) VALUES (?,?,?,?,?,?)', crypto.randomUUID(), now(), 'sms', 'dev_sms', to, message);
+    return;
+  }
+  await fetch('https://api.semaphore.co/api/v4/messages', { method: 'POST', body: new URLSearchParams({ apikey: c.env.SEMAPHORE_KEY, number: to, message }) });
+}

@@ -1,0 +1,218 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0a1024"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/css/tokens.css">
+<title>Circle Academy — The Virtual Circle</title>
+<style>
+  .sim-email{display:flex;gap:1rem;align-items:flex-start;justify-content:space-between;padding:1rem;border:1px solid var(--line);border-radius:14px;margin-bottom:.6rem;flex-wrap:wrap}
+  .sim-email.done{opacity:.55}.sim-email .meta{min-width:0;flex:1 1 280px}.sim-email .acts{display:flex;gap:.35rem;flex-wrap:wrap}
+  .rec{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9rem;background:var(--bg-2);border:1px dashed var(--line-2);border-radius:12px;padding:.8rem 1rem;margin:.6rem 0}
+  @media print{.top,footer,.no-print{display:none!important}body{background:#fff;color:#000}.certificate{border-color:#b98a2c;background:#fff;color:#000}}
+</style></head><body>
+<main class="wrap page">
+  <div class="page-head no-print"><div><div class="eyebrow">Circle Academy</div><h1 style="font-size:clamp(2rem,4vw,2.8rem)">Learn, practise, get certified</h1>
+    <p class="muted">Short lesson decks, quick knowledge checks, and hands-on simulators. Certificates appear on your profile and help clients trust you.</p></div>
+    <div class="tabs"><button class="tab on" data-tab="courses">Courses</button><button class="tab" data-tab="sims">Circle Academy simulators</button></div></div>
+
+  <div data-panel="courses">
+    <div id="catalog" class="grid g3"></div>
+    <div id="course" class="hidden"></div>
+    <div id="lesson" class="hidden"></div>
+    <div id="cert" class="hidden"></div>
+  </div>
+
+  <div data-panel="sims" class="hidden">
+    <div id="simpick" class="grid g3">
+      <div class="card"><div class="icon">📥</div><h3>Inbox triage</h3><p class="muted small">Sort 10 real-world emails into Urgent, Reply, Delegate or Archive. Accuracy and speed count.</p><button class="btn ghost sm" data-sim="inbox">Start</button></div>
+      <div class="card"><div class="icon">🗓️</div><h3>Time-zone scheduling</h3><p class="muted small">Find a Manila meeting time that fits every attendee's working hours.</p><button class="btn ghost sm" data-sim="calendar">Start</button></div>
+      <div class="card"><div class="icon">⌨️</div><h3>Data entry accuracy</h3><p class="muted small">Copy invoice details into a form. Every character is checked.</p><button class="btn ghost sm" data-sim="dataentry">Start</button></div>
+    </div>
+    <div id="simarea" class="hidden"></div>
+  </div>
+</main>
+<script type="module">
+import { api, $, $$, esc, shell, toast, chip, tabs, when, safeDecode } from '/js/app.js';
+const { user: me } = await shell({ auth: true, needActive: true });
+const showTab = tabs(document);
+const md = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+const views = ['catalog', 'course', 'lesson', 'cert'];
+const view = (v) => views.forEach((x) => $('#' + x).classList.toggle('hidden', x !== v));
+
+// ───────── Courses ─────────
+async function catalog() {
+  view('catalog');
+  const { courses } = await api('learn/courses');
+  $('#catalog').innerHTML = courses.map((c) => `<div class="card"><div class="row between"><span class="chip">${esc(c.level)}</span>${c.pro ? chip('✨ Tier 2', 'amber') : chip('Free', 'ok')}</div>
+    <h3 style="margin-top:.9rem">${esc(c.title)}</h3><p class="muted small">${esc(c.summary)}</p>
+    <div class="meter" style="margin:.6rem 0"><i style="width:${c.lessons ? Math.round(100 * c.passed / c.lessons) : 0}%"></i></div>
+    <p class="faint small">${c.passed}/${c.lessons} lessons ${c.certified ? '· 🎓 Certified' : ''}</p>
+    ${c.locked ? '<a class="btn sm" href="/pro.html">Unlock with Tier 2</a>' : `<a class="btn ghost sm" href="#course=${c.id}">${c.passed ? 'Continue' : 'Start course'}</a>`}</div>`).join('') || '<div class="empty">No courses yet.</div>';
+}
+async function course(id) {
+  view('course');
+  const { course: c, lessons } = await api('learn/course?id=' + encodeURIComponent(id));
+  const done = lessons.filter((l) => l.passed).length;
+  const cert = done === lessons.length && lessons.length ? (await api('learn/courses')).courses.find((x) => x.id === id)?.certified : false;
+  $('#course').innerHTML = `<a href="#" class="small">← All courses</a><div class="card glow" style="margin-top:1rem"><div class="eyebrow">${esc(c.level)}${c.pro ? ' · Pro' : ''}</div><h2>${esc(c.title)}</h2><p class="muted">${esc(c.summary)}</p>
+    <div class="meter" style="margin:.8rem 0"><i style="width:${lessons.length ? Math.round(100 * done / lessons.length) : 0}%"></i></div><p class="faint small">${done}/${lessons.length} lessons passed${cert ? ' · 🎓 certificate earned' : ''}</p></div>
+    <ol class="steps" style="margin-top:2rem">${lessons.map((l) => `<li><div class="row between"><div><b>${esc(l.title)}</b> ${l.passed ? chip('✓ ' + l.score + '%', 'ok') : l.score != null ? chip(l.score + '%', 'warn') : ''}
+      ${l.simulator ? chip('Includes simulator', 'info') : ''}</div>${c.locked ? '<a class="btn sm" href="/pro.html">Unlock</a>' : `<a class="btn ${l.passed ? 'quiet' : ''} sm" href="#lesson=${l.id}">${l.passed ? 'Review' : 'Open lesson'}</a>`}</div></li>`).join('')}</ol>`;
+}
+async function lesson(id) {
+  view('lesson');
+  const { lesson: l } = await api('learn/lesson?id=' + encodeURIComponent(id));
+  let i = 0; const answers = [];
+  const box = $('#lesson');
+  const deck = () => {
+    const s = l.slides[i];
+    box.innerHTML = `<a href="#course=${l.course_id}" class="small">← Back to course</a><h2 style="margin-top:1rem">${esc(l.title)}</h2>
+      <div class="card slide" style="margin:1rem 0"><div class="eyebrow">Slide ${i + 1} of ${l.slides.length}</div><h2>${esc(s.title)}</h2><div class="body">${md(s.body)}</div></div>
+      <div class="dots">${l.slides.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</div>
+      <div class="row between" style="margin-top:1.25rem"><button class="btn quiet" id="prev" ${i ? '' : 'disabled'}>← Back</button>
+        ${i < l.slides.length - 1 ? '<button class="btn" id="next">Next →</button>' : `<button class="btn" id="toquiz">${l.quiz.length ? 'Take the knowledge check' : 'Mark complete'}</button>`}</div>
+      ${l.simulator ? `<div class="notice" style="margin-top:1.5rem">🧪 This lesson has a practical simulator. <a href="#sim=${l.simulator}">Open it in a new view</a> after the check.</div>` : ''}`;
+    $('#prev').onclick = () => { i--; deck(); };
+    $('#next') && ($('#next').onclick = () => { i++; deck(); });
+    $('#toquiz') && ($('#toquiz').onclick = quiz);
+  };
+  const quiz = () => {
+    box.innerHTML = `<a href="#course=${l.course_id}" class="small">← Back to course</a><h2 style="margin-top:1rem">Knowledge check: ${esc(l.title)}</h2>
+      <p class="muted small">Pass mark: ${l.pass_pct}%. You can retake it any time.</p>
+      <form id="qf" class="stack">${l.quiz.map((q, k) => `<fieldset class="card" style="border:1px solid var(--line)"><legend class="small faint">Question ${k + 1}</legend><p><b>${esc(q.q)}</b></p>
+        ${q.choices.map((ch, j) => `<label class="choice" data-q="${k}" data-c="${j}"><input type="radio" name="q${k}" value="${j}" required> <span>${esc(ch)}</span></label>`).join('')}<p class="small explain hidden"></p></fieldset>`).join('')}
+        <button class="btn">Submit answers</button></form><div id="qres"></div>`;
+    $('#qf').onsubmit = async (e) => { e.preventDefault();
+      const fd = new FormData(e.target); l.quiz.forEach((_, k) => (answers[k] = Number(fd.get('q' + k))));
+      try {
+        const r = await api('learn/submit', { body: { lesson_id: l.id, answers } });
+        r.results.forEach((res, k) => {
+          $$(`[data-q="${k}"]`).forEach((el) => { el.classList.remove('right', 'wrong'); if (Number(el.dataset.c) === res.answer) el.classList.add('right'); else if (Number(el.dataset.c) === answers[k]) el.classList.add('wrong'); });
+          const ex = e.target.querySelectorAll('.explain')[k]; ex.textContent = (res.correct ? '✓ ' : '✗ ') + res.explain; ex.classList.remove('hidden');
+        });
+        $('#qres').innerHTML = `<div class="card ${r.passed ? 'glow' : ''}" style="margin-top:1rem"><div class="score">${r.score}%</div><p>${r.passed ? 'Passed! 🎉' : 'Not quite yet. Review the slides and try again.'}</p>
+          ${r.certificate ? `<p>🎓 You completed the course! <a href="#cert=${r.certificate}">View your certificate</a></p>` : ''}
+          <div class="row">${l.simulator ? `<a class="btn ghost sm" href="#sim=${l.simulator}">Practise in the simulator</a>` : ''}<a class="btn sm" href="#course=${l.course_id}">Back to course</a><button class="btn quiet sm" id="retake">Retake</button></div></div>`;
+        $('#retake').onclick = quiz; $('#qres').scrollIntoView({ behavior: 'smooth' });
+      } catch (err) { toast(err.message, 'err'); }
+    };
+  };
+  l.slides.length ? deck() : quiz();
+}
+async function cert(id) {
+  view('cert');
+  const { certificate: c } = await api('learn/certificate?id=' + encodeURIComponent(id));
+  $('#cert').innerHTML = `<div class="certificate"><div class="moon" style="width:64px;height:64px;margin:0 auto 1.2rem"></div><div class="eyebrow">Certificate of completion</div>
+    <h1 style="margin:.6rem 0">${esc(c.name)}</h1><p class="muted">has completed</p><h2>${esc(c.course)}</h2>
+    <p class="muted small">Issued ${when(c.ts)} · Circle Academy · ID ${esc(c.id.slice(0, 8))}</p><p class="amber">Keep the Virtual Circle Glowing ✨</p></div>
+    <div class="row no-print" style="justify-content:center;margin-top:1rem"><button class="btn" onclick="print()">Print / save as PDF</button><a class="btn ghost" href="#">All courses</a></div>`;
+}
+
+// ───────── Simulators (original practice content) ─────────
+const report = async (sim, score, detail) => { try { const r = await api('learn/simulator', { body: { sim, score, detail } }); return r; } catch (e) { toast(e.message, 'err'); return {}; } };
+const simDone = (score, r, extra = '') => `<div class="card glow" style="margin-top:1rem"><div class="eyebrow">Your score</div><div class="score">${score}</div>
+  <p class="muted small">Practice average: ${r.average ?? '—'}${r.badge ? ` · ✦ Badge earned: <b>${esc(r.badge)}</b>` : ' · Score 85+ to earn the badge'}</p>${extra}
+  <div class="row"><a class="btn ghost sm" href="#sims">All simulators</a></div></div>`;
+
+const EMAILS = [
+  ['CTO', 'URGENT: checkout API returning 500s', 'Customers can’t pay. Need the incident vendor looped in now.', 'urgent'],
+  ['Newsletter', 'This week in SaaS growth', '10 tactics to grow your MRR…', 'archive'],
+  ['Client (CEO)', 'Can you move tomorrow’s investor call?', 'Something came up. Any slot Thursday works.', 'reply'],
+  ['Accounting', 'Receipt #48812 for your records', 'Thank you for your payment of $49.00.', 'archive'],
+  ['Applicant', 'Following up on the designer role', 'Just checking on the status of my application.', 'delegate'],
+  ['Client (CEO)', 'Contract needs signature by 5pm TODAY', 'Legal says this is the final day for the lease renewal.', 'urgent'],
+  ['Vendor', 'Quote for new office chairs', 'Please find attached our quote for 12 chairs.', 'delegate'],
+  ['Teammate', 'Lunch & learn next Friday?', 'Would you like to present your inbox system?', 'reply'],
+  ['Bank', 'Unusual login detected on company account', 'If this wasn’t you, secure your account immediately.', 'urgent'],
+  ['Webinar', 'Your recording is ready', 'Watch the replay of “Hiring in 2026”.', 'archive'],
+];
+function simInbox() {
+  const order = [...EMAILS].sort(() => Math.random() - 0.5); const picks = {}; const t0 = Date.now();
+  const area = $('#simarea');
+  const draw = () => {
+    area.innerHTML = `<a href="#sims" class="small">← Simulators</a><h2 style="margin-top:1rem">📥 Inbox triage</h2><p class="muted small">Sort every email. ${Object.keys(picks).length}/10 done.</p>
+      ${order.map((e, k) => `<div class="sim-email ${picks[k] ? 'done' : ''}"><div class="meta"><b>${esc(e[1])}</b><div class="faint small">${esc(e[0])} · ${esc(e[2])}</div></div>
+        <div class="acts">${['urgent', 'reply', 'delegate', 'archive'].map((b) => `<button class="btn sm ${picks[k] === b ? '' : 'quiet'}" data-k="${k}" data-b="${b}">${b[0].toUpperCase() + b.slice(1)}</button>`).join('')}</div></div>`).join('')}
+      <button class="btn" id="finish" ${Object.keys(picks).length < 10 ? 'disabled' : ''}>Finish & score</button><div id="res"></div>`;
+  };
+  draw();
+  area.onclick = async (ev) => {
+    const b = ev.target.dataset; if (b.k !== undefined && b.b) { picks[b.k] = b.b; draw(); return; }
+    if (ev.target.id !== 'finish') return;
+    const right = order.filter((e, k) => picks[k] === e[3]).length; const secs = Math.round((Date.now() - t0) / 1000);
+    const score = Math.max(0, Math.round(right * 10 - Math.max(0, secs - 90) / 6));
+    const r = await report('inbox', score, `${right}/10 correct in ${secs}s`);
+    $('#res').innerHTML = simDone(score, r, `<p class="small">${right}/10 correct in ${secs}s.</p><ul class="small">${order.map((e, k) => picks[k] !== e[3] ? `<li>“${esc(e[1])}” → <b>${e[3]}</b></li>` : '').join('')}</ul>`);
+  };
+}
+const ROUNDS = [
+  { brief: 'Weekly sync with a New York manager (UTC−5, works 9:00–17:00).', people: [['You', 'Manila', 8, 7, 23], ['Dana', 'New York', -5, 9, 17]] },
+  { brief: 'Kickoff with London (UTC+0, early start 7:00–17:00) and Sydney (UTC+11, 8:00–19:00).', people: [['Omar', 'London', 0, 7, 17], ['Mia', 'Sydney', 11, 8, 19]] },
+  { brief: 'Client call: Los Angeles (UTC−8, 8:00–16:00) and Manila (you, 6:00–24:00).', people: [['You', 'Manila', 8, 6, 24], ['Leo', 'Los Angeles', -8, 8, 16]] },
+  { brief: 'Board prep: Dubai (UTC+4, 9:00–18:00), London (UTC+0, 8:00–17:00), Manila (you, 13:00–22:00).', people: [['Aisha', 'Dubai', 4, 9, 18], ['Omar', 'London', 0, 8, 17], ['You', 'Manila', 8, 13, 22]] },
+];
+function simCalendar() {
+  let k = 0, right = 0; const area = $('#simarea'); const log = [];
+  const fits = (h) => ROUNDS[k].people.every(([, , off, s, e]) => { const local = ((h - 8 + off) % 24 + 24) % 24; return local >= s && local + 1 <= e; });
+  const draw = () => {
+    const r = ROUNDS[k];
+    area.innerHTML = `<a href="#sims" class="small">← Simulators</a><h2 style="margin-top:1rem">🗓️ Time-zone scheduling</h2><p class="muted small">Round ${k + 1} of ${ROUNDS.length} · Manila is UTC+8 · 1-hour meeting</p>
+      <div class="card"><p><b>${esc(r.brief)}</b></p><ul class="small">${r.people.map(([n, city, off, s, e]) => `<li>${esc(n)} (${esc(city)}, UTC${off >= 0 ? '+' : '−'}${Math.abs(off)}): available ${s}:00–${e}:00 local</li>`).join('')}</ul>
+      <label for="hr">Meeting start (Manila time)</label><select id="hr">${Array.from({ length: 24 }, (_, h) => `<option value="${h}">${String(h).padStart(2, '0')}:00 Manila</option>`).join('')}</select>
+      <button class="btn" id="go" style="margin-top:1rem">Book it</button><div id="fb" class="msg"></div></div><div id="res"></div>`;
+    $('#go').onclick = async () => {
+      const h = Number($('#hr').value); const ok = fits(h); if (ok) right++;
+      const valid = Array.from({ length: 24 }, (_, x) => x).filter(fits);
+      log.push(`R${k + 1}:${ok ? 'ok' : 'miss'}`);
+      $('#fb').className = 'msg ' + (ok ? 'ok' : 'err');
+      $('#fb').textContent = ok ? '✓ Everyone can attend.' : `✗ Someone is outside working hours. Valid Manila starts: ${valid.map((x) => x + ':00').join(', ') || 'none (needs a split meeting)'}`;
+      $('#go').disabled = true;
+      setTimeout(async () => { k++; if (k < ROUNDS.length) return draw();
+        const score = Math.round(100 * right / ROUNDS.length); const res = await report('calendar', score, log.join(' '));
+        area.innerHTML = `<a href="#sims" class="small">← Simulators</a><h2 style="margin-top:1rem">🗓️ Time-zone scheduling</h2>` + simDone(score, res, `<p class="small">${right}/${ROUNDS.length} meetings booked correctly.</p>`); }, 1600);
+    };
+  };
+  draw();
+}
+const RECORDS = [
+  { invoice: 'INV-20418', client: 'Brightcart LLC', amount: '1,284.50', due: '2026-12-05' },
+  { invoice: 'INV-20419', client: 'Northwind Labs', amount: '760.00', due: '2026-12-09' },
+  { invoice: 'INV-20420', client: "O'Neil & Sons", amount: '10,015.75', due: '2026-12-15' },
+  { invoice: 'INV-2O421', client: 'Lumen Dental Co.', amount: '342.10', due: '2027-01-02' },
+];
+function simData() {
+  const area = $('#simarea'); const t0 = Date.now();
+  area.innerHTML = `<a href="#sims" class="small">← Simulators</a><h2 style="margin-top:1rem">⌨️ Data entry accuracy</h2><p class="muted small">Copy each record exactly, including punctuation. Watch for look-alike characters.</p>
+    <form id="df" class="stack">${RECORDS.map((r, k) => `<div class="card"><div class="rec">Invoice: ${esc(r.invoice)}<br>Client: ${esc(r.client)}<br>Amount: $${esc(r.amount)}<br>Due: ${esc(r.due)}</div>
+      <div class="field-row">${['invoice', 'client', 'amount', 'due'].map((f) => `<div><label>${f[0].toUpperCase() + f.slice(1)}</label><input name="${f}${k}" autocomplete="off" required ${f === 'amount' ? 'placeholder="numbers only, no $"' : ''}></div>`).join('')}</div></div>`).join('')}
+      <button class="btn">Submit</button></form><div id="res"></div>`;
+  $('#df').onsubmit = async (e) => { e.preventDefault(); const fd = new FormData(e.target);
+    let chars = 0, ok = 0; const misses = [];
+    RECORDS.forEach((r, k) => ['invoice', 'client', 'amount', 'due'].forEach((f) => { const want = r[f], got = String(fd.get(f + k) || '');
+      chars += want.length; for (let i = 0; i < want.length; i++) if (got[i] === want[i]) ok++; if (got !== want) misses.push(`${f} on record ${k + 1}: expected “${want}”`); }));
+    const secs = Math.round((Date.now() - t0) / 1000); const acc = Math.round(100 * ok / chars);
+    const score = Math.max(0, acc - Math.max(0, Math.round((secs - 180) / 10)));
+    const r = await report('dataentry', score, `${acc}% accuracy in ${secs}s`);
+    $('#res').innerHTML = simDone(score, r, `<p class="small">${acc}% character accuracy in ${secs}s.</p>${misses.length ? '<ul class="small">' + misses.map((m) => `<li>${esc(m)}</li>`).join('') + '</ul>' : '<p class="small">Perfect copy! ✨</p>'}`);
+    $('#res').scrollIntoView({ behavior: 'smooth' });
+  };
+}
+function sims(which) {
+  showTab('sims');
+  $('#simpick').classList.toggle('hidden', !!which); $('#simarea').classList.toggle('hidden', !which);
+  if (which === 'inbox') simInbox(); if (which === 'calendar') simCalendar(); if (which === 'dataentry') simData();
+}
+$('#simpick').onclick = (e) => { const s = e.target.dataset.sim; if (s) location.hash = 'sim=' + s; };
+
+const route = async () => {
+  const h = safeDecode(location.hash.slice(1)); const [k, v] = h.split('=');
+  if (k === 'course') { showTab('courses'); return course(v); }
+  if (k === 'lesson') { showTab('courses'); return lesson(v); }
+  if (k === 'cert') { showTab('courses'); return cert(v); }
+  if (k === 'sim') return sims(v);
+  if (k === 'sims') return sims('');
+  showTab('courses'); return catalog();
+};
+window.onhashchange = () => route().catch((e) => toast(e.message, 'err'));
+route().catch((e) => toast(e.message, 'err'));
+</script>
+</body></html>

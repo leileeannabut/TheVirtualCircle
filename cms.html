@@ -1,0 +1,77 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0a1024"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/css/tokens.css">
+<title>Circle Academy editor — The Virtual Circle</title>
+<style>.item{border:1px solid var(--line);border-radius:14px;padding:1rem;margin:.6rem 0;background:rgba(15,23,48,.6)}</style></head><body>
+<main class="wrap page">
+  <div class="page-head"><div><div class="eyebrow">Circle Academy editor (CMS)</div><h1 style="font-size:clamp(2rem,4vw,2.8rem)">Build lessons for the circle</h1>
+    <p class="muted">Senior VAs and staff can write courses: slide decks, knowledge checks, and a link to a practice simulator. Senior VA courses go to staff review before publishing.</p></div>
+    <button class="btn" id="new">+ New course</button></div>
+  <div class="split rev">
+    <aside class="card soft"><h3>Courses</h3><ul class="list" id="courses"></ul></aside>
+    <div class="stack" id="editor"><div class="empty">Pick a course to edit, or create a new one.</div></div>
+  </div>
+</main>
+<script type="module">
+import { api, $, $$, esc, shell, toast, chip, STAFF } from '/js/app.js';
+const { user: me } = await shell({ auth: true, needActive: true });
+if (me.va_rank < 3 && !STAFF.includes(me.role)) { $('main').innerHTML = '<div class="empty">Course authoring unlocks at Senior VA rank. <a href="/app.html">Raise your rank →</a></div>'; throw 0; }
+let courses = [], current = null;
+async function list() {
+  ({ courses } = await api('cms/courses'));
+  $('#courses').innerHTML = courses.map((c) => `<li><a href="#${c.id}" style="color:var(--text)">${esc(c.title)}</a>${chip(c.status, c.status === 'published' ? 'ok' : c.status === 'review' ? 'info' : 'warn')}</li>`).join('') || '<li class="muted">No courses yet.</li>';
+}
+const courseForm = (c = {}) => `<form class="card" id="cf"><h3>${c.id ? 'Course details' : 'New course'}</h3><input type="hidden" name="cid" value="${esc(c.id || '')}">
+  <label>Title</label><input name="title" value="${esc(c.title || '')}" required><label>Summary</label><textarea name="summary" style="min-height:70px">${esc(c.summary || '')}</textarea>
+  <div class="field-row"><div><label>Level</label><select name="level">${['Beginner', 'Intermediate', 'Advanced'].map((l) => `<option ${l === c.level ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <div><label>Status</label><select name="status"><option value="draft">Draft</option><option value="published" ${c.status === 'published' || c.status === 'review' ? 'selected' : ''}>${STAFF.includes(me.role) ? 'Published' : 'Submit for review'}</option></select></div>
+    <div><label>Order</label><input name="sort" type="number" value="${c.sort ?? 50}"></div></div>
+  <label class="inline"><input type="checkbox" name="pro" ${c.pro ? 'checked' : ''}> Tier 2 course (Circle Pro members only)</label>
+  <button class="btn">Save course</button>${c.id ? ` <a class="btn ghost" href="/learn.html#course=${c.id}" target="_blank">Preview</a>` : ''}</form>`;
+async function open(id) {
+  current = courses.find((c) => c.id === id); if (!current) return;
+  const { lessons } = await api('cms/lessons?course_id=' + encodeURIComponent(id));
+  $('#editor').innerHTML = courseForm(current) + `<div class="card"><div class="row between"><h3 style="margin:0">Lessons</h3><button class="btn sm" id="addl">+ Lesson</button></div><div id="lessons"></div></div>`;
+  $('#lessons').innerHTML = lessons.map(lessonForm).join('') || '<p class="muted small">No lessons yet.</p>';
+  wire(lessons);
+}
+const slideRow = (s = {}) => `<div class="item" data-slide><div class="row between"><b class="small">Slide</b><button type="button" class="btn quiet sm" data-del>Remove</button></div>
+  <input data-f="title" placeholder="Slide title" value="${esc(s.title || '')}" style="margin-top:.5rem"><textarea data-f="body" placeholder="Slide text. Use **bold** and new lines for bullets." style="margin-top:.5rem">${esc(s.body || '')}</textarea></div>`;
+const qRow = (q = { choices: ['', ''] }, n = 0) => { const name = 'ans' + Math.random().toString(36).slice(2);
+  return `<div class="item" data-q><div class="row between"><b class="small">Question</b><button type="button" class="btn quiet sm" data-del>Remove</button></div>
+  <input data-f="q" placeholder="Question" value="${esc(q.q || '')}" style="margin-top:.5rem">
+  ${[0, 1, 2, 3].map((j) => `<div class="row" style="margin-top:.4rem"><input type="radio" name="${name}" value="${j}" ${q.answer === j ? 'checked' : ''} title="Correct answer"><input data-choice="${j}" placeholder="Choice ${j + 1}${j > 1 ? ' (optional)' : ''}" value="${esc(q.choices[j] || '')}" style="flex:1"></div>`).join('')}
+  <input data-f="explain" placeholder="Why is that the right answer? (shown after submitting)" value="${esc(q.explain || '')}" style="margin-top:.5rem"></div>`; };
+const lessonForm = (l) => `<form class="item" data-lesson="${esc(l.id || '')}"><div class="field-row"><div><label>Lesson title</label><input name="title" value="${esc(l.title || '')}" required></div>
+  <div><label>Position</label><input name="position" type="number" value="${l.position || 1}"></div><div><label>Pass mark %</label><input name="pass_pct" type="number" value="${l.pass_pct ?? 70}"></div>
+  <div><label>Practice simulator</label><select name="simulator"><option value="">None</option>${['inbox', 'calendar', 'dataentry'].map((s) => `<option ${l.simulator === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div></div>
+  <h4 style="margin-top:1rem">Slides</h4><div data-slides>${(l.slides || []).map(slideRow).join('')}</div><button type="button" class="btn quiet sm" data-add-slide>+ Slide</button>
+  <h4 style="margin-top:1rem">Knowledge check</h4><div data-quiz>${(l.quiz || []).map(qRow).join('')}</div><button type="button" class="btn quiet sm" data-add-q>+ Question</button>
+  <div class="row" style="margin-top:1rem"><button class="btn">Save lesson</button>${l.id ? `<a class="btn ghost" href="/learn.html#lesson=${l.id}" target="_blank">Preview</a><button type="button" class="btn danger sm" data-del-lesson>Delete lesson</button>` : ''}</div></form>`;
+function wire() {
+  $('#cf').onsubmit = saveCourse;
+  $('#addl').onclick = () => { $('#lessons').insertAdjacentHTML('beforeend', lessonForm({ position: $$('[data-lesson]').length + 1, slides: [{}], quiz: [{ choices: ['', ''] }] })); };
+  $('#lessons').onclick = async (e) => {
+    const f = e.target.closest('[data-lesson]');
+    if (e.target.dataset.del !== undefined) e.target.closest('.item').remove();
+    if (e.target.dataset.addSlide !== undefined) f.querySelector('[data-slides]').insertAdjacentHTML('beforeend', slideRow());
+    if (e.target.dataset.addQ !== undefined) f.querySelector('[data-quiz]').insertAdjacentHTML('beforeend', qRow());
+    if (e.target.dataset.delLesson !== undefined && confirm('Delete this lesson and its progress?')) { await api('cms/lesson/delete', { body: { id: f.dataset.lesson } }); open(current.id); }
+  };
+  $('#lessons').onsubmit = async (e) => { e.preventDefault(); const f = e.target;
+    const slides = [...f.querySelectorAll('[data-slide]')].map((s) => ({ title: s.querySelector('[data-f=title]').value, body: s.querySelector('[data-f=body]').value }));
+    const quiz = [...f.querySelectorAll('[data-q]')].map((q) => { const choices = [...q.querySelectorAll('[data-choice]')].map((i) => i.value.trim());
+      const picked = Number(q.querySelector('input[type=radio]:checked')?.value ?? 0); const kept = choices.filter(Boolean);
+      return { q: q.querySelector('[data-f=q]').value, choices: kept, answer: kept.indexOf(choices[picked]), explain: q.querySelector('[data-f=explain]').value }; });
+    if (quiz.some((q) => q.answer < 0)) return toast('Mark a correct answer (on a filled-in choice) for every question.', 'err');
+    try { const fd = Object.fromEntries(new FormData(f)); await api('cms/lesson', { body: { ...fd, id: f.dataset.lesson || undefined, course_id: current.id, slides, quiz } }); toast('Lesson saved ✨', 'ok'); open(current.id); }
+    catch (err) { toast(err.message, 'err'); } };
+}
+async function saveCourse(e) { e.preventDefault(); const d = Object.fromEntries(new FormData(e.target)); d.pro = e.target.elements.pro.checked; d.id = d.cid || undefined; delete d.cid;
+  try { const r = await api('cms/course', { body: d }); toast(r.status === 'review' ? 'Saved and sent to staff for review' : 'Saved ✨', 'ok'); await list(); location.hash = r.id; open(r.id); } catch (err) { toast(err.message, 'err'); } }
+$('#new').onclick = () => { current = null; $('#editor').innerHTML = courseForm(); $('#cf').onsubmit = saveCourse; };
+await list();
+window.onhashchange = () => open(location.hash.slice(1)); if (location.hash) open(location.hash.slice(1));
+</script>
+</body></html>

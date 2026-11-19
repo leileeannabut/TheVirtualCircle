@@ -1,0 +1,173 @@
+// The Virtual Circle — shared client helpers and page shell
+export const STAFF = ['founder', 'gm', 'ea', 'admin_it', 'moderator'];
+export const FINANCE = ['founder', 'gm', 'cpa'];
+export const SOURCING = ['recruiter', ...STAFF];
+
+export async function api(path, { method, body, form } = {}) {
+  const opt = { method: method || (body || form ? 'POST' : 'GET'), credentials: 'same-origin', headers: {} };
+  if (form) opt.body = form;
+  else if (body) { opt.body = JSON.stringify(body); opt.headers['content-type'] = 'application/json'; }
+  const r = await fetch('/api/' + path, opt);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(data.error || 'Request failed'); e.status = r.status; throw e; }
+  return data;
+}
+export const $ = (s, el = document) => el.querySelector(s);
+export const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+export function say(el, text, kind = 'err') { el.textContent = text; el.className = 'msg ' + kind; }
+export function toast(text, kind = '') {
+  const t = document.createElement('div'); t.className = 'toast ' + kind; t.setAttribute('role', 'status'); t.textContent = text;
+  document.body.append(t); setTimeout(() => t.remove(), 4200);
+}
+export const peso = (n) => '₱' + Number(n || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 });
+export const usd = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+export const when = (ts) => ts ? new Date(Number(ts)).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+export const ago = (ts) => { const s = (Date.now() - Number(ts)) / 1000; return s < 60 ? 'just now' : s < 3600 ? Math.floor(s / 60) + 'm ago' : s < 86400 ? Math.floor(s / 3600) + 'h ago' : Math.floor(s / 86400) + 'd ago'; };
+export const chip = (text, kind = '') => `<span class="chip ${kind}">${esc(text)}</span>`;
+export const ratingChip = (r) => chip(r === 'danger' ? '⛔ High risk' : r === 'caution' ? '⚠️ Caution' : '✅ Looks safe', r === 'danger' ? 'bad' : r === 'caution' ? 'warn' : 'ok');
+
+export async function fingerprint() {
+  const s = [navigator.userAgent, navigator.language, screen.width + 'x' + screen.height, screen.colorDepth,
+    Intl.DateTimeFormat().resolvedOptions().timeZone, navigator.hardwareConcurrency, navigator.platform].join('|');
+  const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Busy-state wrapper for buttons/forms
+export async function busy(btn, fn) {
+  if (!btn) return fn(); // e.g. form.requestSubmit() from an Enter key has no submitter
+  const old = btn.textContent; btn.disabled = true;
+  try { return await fn(); } finally { btn.disabled = false; btn.textContent = old; }
+}
+
+// Payment responses: redirect to PayMongo/Xendit, or report an instant (dev/manual) success
+export function handlePayment(r, okText = 'Payment received ✨') {
+  if (r.checkout_url) { location.href = r.checkout_url; return true; }
+  if (r.paid) { toast(okText, 'ok'); return true; }
+  return false;
+}
+
+// Every feature is "Circle <Name>". The top bar shows just <Name> (it sits next to The Virtual Circle logo); the full name is the tooltip and page title.
+const NAV = [
+  { href: '/feed.html', label: 'Feed', auth: true },
+  { href: '/hubs.html', label: 'Hubs', auth: true },
+  { href: '/messages.html', label: 'Chat', auth: true },
+  { href: '/learn.html', label: 'Academy', auth: true },
+  { href: '/bff.html', label: 'BFF', auth: true },
+  { href: '/jobs.html', label: 'Jobs', auth: true },
+  { href: '/comedy.html', label: '😂 Laughs', name: 'Laughs', auth: true },
+  { href: '/talent.html', label: 'Talent', auth: true },
+  { href: '/wellness.html', label: 'Wellness', guest: true },
+  { href: '/squads.html', label: 'Squads', guest: true },
+  { href: '/scambuster.html', label: 'Scam-Buster', guest: true },
+  { href: '/studio.html', label: 'Studio', guest: true },
+];
+const MORE = [
+  { href: '/app.html', label: '👤 My Circle (dashboard)' },
+  { href: '/connections.html', label: '🤝 Circle Connections' },
+  { href: '/academy.html', label: '🤖 Circle Bestie (AI practice)' },
+  { href: '/comedy.html', label: '😂 Circle Laughs (comedy)' },
+  { href: '/rage.html', label: '🧯 Circle Rage Room' },
+  { href: '/wellness.html', label: '🌙 Circle Wellness' },
+  { href: '/squads.html', label: '🧭 Circle Squads' },
+  { href: '/scambuster.html', label: '🔎 Circle Scam-Buster' },
+  { href: '/mentor.html', label: '🎓 Circle Mentors' },
+  { href: '/cms.html', label: '✍️ Circle Academy editor', minRank: 3 },
+  { href: '/studio.html', label: '🛠️ Circle Studio (Build My Platform)' },
+  { href: '/pro.html', label: '✨ Circle Membership' },
+  { href: '/ambassador.html', label: '🌟 Founding Ambassadors' },
+  { href: '/admin.html', label: '🛡️ Circle Ops', roles: [...STAFF, ...FINANCE] },
+];
+
+let _me;
+export async function me() {
+  if (_me === undefined) _me = await api('me').catch(() => ({ user: null }));
+  return _me;
+}
+
+// Renders the top bar + footer. opts.auth: redirect to /join.html when signed out. opts.roles: restrict.
+export async function shell(opts = {}) {
+  const data = await me();
+  const u = data.user;
+  if (opts.auth && !u) { location.href = '/join.html?next=' + encodeURIComponent(location.pathname); return new Promise(() => {}); }
+  if (opts.roles && u && !opts.roles.includes(u.role)) { location.href = '/feed.html'; return new Promise(() => {}); }
+  const here = location.pathname === '/' ? '/index.html' : location.pathname;
+  const links = NAV.filter((n) => (u ? !n.guest : !n.auth)).map((n) => `<a href="${n.href}" class="${here === n.href ? 'on' : ''}" title="Circle ${n.name || n.label}">${n.label}</a>`).join('');
+  const more = u ? MORE.filter((m) => (!m.roles || m.roles.includes(u.role)) && (!m.minRank || u.va_rank >= m.minRank || STAFF.includes(u.role)))
+    .map((m) => `<a href="${m.href}" class="${here === m.href ? 'on' : ''}">${m.label}</a>`).join('') : '';
+  const top = document.createElement('header'); top.className = 'top';
+  top.innerHTML = `<div class="wrap">
+    <a class="brand" href="${u ? '/feed.html' : '/'}"><span class="orb" aria-hidden="true"></span><span class="brand-text">The Virtual Circle</span></a>
+    <nav class="links" id="navlinks" aria-label="Main">${links}${u ? `<div class="more-mobile">${more}<button class="linkish" data-logout>Sign out</button></div>` : ''}</nav>
+    <div class="me">${u
+      ? `<button class="iconbtn" id="bell" aria-label="Notifications" aria-expanded="false">🔔<span class="badge-dot hidden" id="bell-n"></span></button>
+         <div class="dropdown hidden" id="bell-panel" role="dialog" aria-label="Notifications"></div>
+         <button class="btn quiet sm more-btn" id="more" aria-expanded="false" aria-haspopup="true">More ▾</button>
+         <div class="dropdown menu hidden" id="more-panel">${more}<hr class="divider" style="margin:.4rem 0"><button class="linkish" id="logout">Sign out</button></div>`
+      : `<a class="btn sm" href="/join.html" style="gap:0">Join<span class="wide-only">&nbsp;/ Sign in</span></a>`}
+      <button class="btn quiet sm menu-btn" id="menu" aria-expanded="false" aria-controls="navlinks">Menu</button></div></div>`;
+  document.body.prepend(top);
+  $('#menu').onclick = (e) => { const o = $('#navlinks').classList.toggle('open'); e.currentTarget.setAttribute('aria-expanded', o); };
+  if (u) {
+    const toggle = (btn, panel, onOpen) => { btn.onclick = (e) => { e.stopPropagation(); const open = panel.classList.toggle('hidden') === false;
+      btn.setAttribute('aria-expanded', open); $$('.dropdown').forEach((d) => d !== panel && d.classList.add('hidden')); if (open && onOpen) onOpen(); }; };
+    toggle($('#more'), $('#more-panel'));
+    toggle($('#bell'), $('#bell-panel'), openBell);
+    document.addEventListener('click', (e) => { if (!e.target.closest('.dropdown')) $$('.dropdown').forEach((d) => d.classList.add('hidden')); });
+    const out = async () => { await api('auth/logout', { method: 'POST', body: {} }).catch(() => {}); location.href = '/'; };
+    $('#logout').onclick = out; $('[data-logout]').onclick = out;
+    if (u.status === 'active') { pollBell(); setInterval(pollBell, 60000); }
+  }
+  const f = document.createElement('footer'); f.className = 'site';
+  f.innerHTML = `<div class="wrap"><span>Keep the Virtual Circle Glowing ✨ · The Virtual Circle™</span>
+    <span><a href="/pro.html">Keep the Circle Glowing ✨</a> · <a href="/privacy.html">Privacy (RA 10173)</a> · <a href="/privacy.html#terms">Terms</a> · <a href="/wellness.html#crisis">Crisis lines</a> · <a href="/studio.html">Circle Studio</a></span></div>`;
+  document.body.append(f);
+  if (u && u.status !== 'active' && opts.needActive && !STAFF.includes(u.role)) {
+    const main = $('main');
+    main.innerHTML = `<div class="card glow" style="max-width:640px;margin:3rem auto;text-align:center"><div class="icon" style="margin:0 auto 1rem">🛡️</div>
+      <h2>Finish verifying to enter</h2><p class="muted">Every member proves who they are before joining the circle: Government ID for aspiring VAs, plus proof of work for tenured VAs. It keeps the circle real and scam-free.</p>
+      <a class="btn" href="/join.html">Continue verification</a></div>`;
+    return new Promise(() => {});
+  }
+  return data;
+}
+
+async function pollBell() {
+  const r = await api('notifications').catch(() => null); if (!r) return;
+  const n = $('#bell-n'); n.textContent = r.unread > 9 ? '9+' : r.unread; n.classList.toggle('hidden', !r.unread);
+  return r;
+}
+async function openBell() {
+  const r = await pollBell(); const p = $('#bell-panel');
+  p.innerHTML = `<div class="row between" style="padding:.4rem .6rem"><b>Notifications</b></div>` + (r && r.notifications.length
+    ? r.notifications.map((x) => `<a class="notif ${x.read ? '' : 'unread'}" href="${esc(x.link || '#')}"><span>${esc(x.text)}</span><span class="faint small">${ago(x.ts)}</span></a>`).join('')
+    : '<p class="muted small" style="padding:.6rem">Nothing yet. Post, connect, or join Circle BFF to get the circle talking.</p>');
+  if (r && r.unread) { await api('notifications/read', { body: {} }).catch(() => {}); $('#bell-n').classList.add('hidden'); }
+}
+
+export const rankChip = (name, rank) => /^Circle Host/.test(name || '')
+  ? `<span class="chip host" title="Circle Hosts are AI helpers run by The Virtual Circle team. They are not members.">🤖 ${esc(name)}</span>`
+  : `<span class="chip ${rank >= 3 ? 'amber' : rank >= 2 ? 'ok' : rank >= 1 ? 'info' : 'warn'}" title="Verification rank">${esc(name || 'Member')}</span>`;
+// The AI label always comes from the server's account type (author.host / message.host), never from a display name
+export const hostChip = () => '<span class="chip host" title="Circle Hosts are AI helpers run by The Virtual Circle team. They are not members.">🤖 Circle Host · AI</span>';
+// Decodes a URL fragment without ever throwing on a malformed link
+export const safeDecode = (s) => { try { return decodeURIComponent(s); } catch { return ''; } };
+export const ambassadorChip = (a) => (a && a.ambassador ? '<span class="chip amber" title="Founding Ambassador">🌟 Ambassador</span>' : '');
+export const avatar = (name, size = 40, glow = false) => { let h = 0; for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  const ini = String(name).split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  return `<span class="avatar" style="width:${size}px;height:${size}px;font-size:${size * 0.38}px;background:hsl(${h} 45% 28%);border-color:${glow ? '#ffd78a' : `hsl(${h} 55% 45%)`};${glow ? 'box-shadow:0 0 0 2px rgba(242,182,74,.35),0 0 16px 3px rgba(242,182,74,.55)' : ''}" ${glow ? 'title="Glow Keeper ✨"' : 'aria-hidden="true"'}>${esc(ini)}</span>`; };
+
+// Simple tab controller: buttons [data-tab] toggle panels [data-panel]
+export function tabs(root = document, onChange) {
+  const btns = $$('[data-tab]', root);
+  const show = (id) => {
+    btns.forEach((b) => b.classList.toggle('on', b.dataset.tab === id));
+    $$('[data-panel]', root).forEach((p) => p.classList.toggle('hidden', p.dataset.panel !== id));
+    onChange && onChange(id);
+  };
+  btns.forEach((b) => (b.onclick = () => show(b.dataset.tab)));
+  const first = btns.find((b) => b.classList.contains('on')) || btns[0];
+  if (first) show(first.dataset.tab);
+  return show;
+}

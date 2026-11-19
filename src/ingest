@@ -1,0 +1,91 @@
+// Job & profile ingestion pipeline: RSS/Atom, JSON APIs, or HTML pages (Gemini extraction). Honours robots.txt.
+import { clean, now, uid, sha256 } from './lib.js';
+import { heuristicScan, gemini } from './services.js';
+
+const UA = 'VirtualCircleBot/1.0 (+/privacy.html)';
+
+export async function ingest(c, onlyId) {
+  const sources = onlyId
+    ? await c.db.all('SELECT * FROM sources WHERE id = ?', onlyId)
+    : await c.db.all('SELECT * FROM sources WHERE active = 1');
+  const results = [];
+  for (const s of sources) {
+    let added = 0, error = '';
+    try {
+      if (!(await robotsAllowed(s.url))) throw new Error('Blocked by robots.txt');
+      const r = await fetch(s.url, { headers: { 'user-agent': UA, accept: 'application/json, application/rss+xml, text/html;q=0.8' } });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const items = await parse(c, await r.text(), s.format, s.type);
+      for (const it of items.slice(0, 200)) if (await (s.type === 'profile' ? addCandidate(c, s, it) : addJob(c, s, it))) added++;
+    } catch (e) { error = String(e.message || e).slice(0, 200); }
+    await c.db.update('sources', s.id, { last_run: now(), last_count: added, last_error: error });
+    results.push({ id: s.id, url: s.url, added, error });
+  }
+  return { results };
+}
+
+async function robotsAllowed(url) {
+  const u = new URL(url);
+  try {
+    const r = await fetch(u.origin + '/robots.txt', { headers: { 'user-agent': UA } });
+    if (!r.ok) return true;
+    let applies = false; const dis = [];
+    for (const line of (await r.text()).split(/\r?\n/)) {
+      const l = line.split('#')[0].trim(); const i = l.indexOf(':'); if (i < 0) continue;
+      const k = l.slice(0, i).trim().toLowerCase(), v = l.slice(i + 1).trim();
+      if (k === 'user-agent') applies = v === '*' || /virtualcircle/i.test(v);
+      else if (k === 'disallow' && applies && v) dis.push(v);
+    }
+    return !dis.some((d) => u.pathname.startsWith(d));
+  } catch { return true; }
+}
+
+const strip = (s) => String(s || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/<[^>]+>/g, ' ')
+  .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+const tag = (xml, name) => { const m = xml.match(new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`, 'i')); return m ? strip(m[1]) : ''; };
+
+async function parse(c, text, format, type) {
+  if (format === 'rss') {
+    const blocks = text.match(/<item[\s>][\s\S]*?<\/item>/gi) || text.match(/<entry[\s>][\s\S]*?<\/entry>/gi) || [];
+    return blocks.map((b) => ({
+      title: tag(b, 'title'), url: tag(b, 'link') || (b.match(/<link[^>]*href="([^"]+)"/i) || [])[1] || '',
+      description: (tag(b, 'description') || tag(b, 'summary') || tag(b, 'content')).slice(0, 2000),
+      posted_at: tag(b, 'pubDate') || tag(b, 'updated') || tag(b, 'published'), company: tag(b, 'author') || tag(b, 'dc:creator'),
+    }));
+  }
+  if (format === 'json') {
+    const d = JSON.parse(text);
+    const arr = Array.isArray(d) ? d : d.items || d.jobs || d.results || d.data || d.profiles || [];
+    return arr.map((x) => ({ title: x.title || x.position || x.name, name: x.name || x.full_name, url: x.url || x.link || x.apply_url,
+      company: x.company || x.company_name || '', location: x.location || x.candidate_required_location || '', rate: x.salary || x.rate || '',
+      description: strip(x.description || x.headline || '').slice(0, 2000), tags: [].concat(x.tags || x.skills || []).join(', '),
+      posted_at: x.publication_date || x.date || x.posted_at || '', headline: x.headline || x.title || '', region: x.region || x.location || '' }));
+  }
+  const visible = strip(text.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ')).slice(0, 30000);
+  const want = type === 'profile' ? '[{"name","headline","skills","region","url"}]' : '[{"title","company","location","rate","tags","url","description"}]';
+  const out = await gemini(c, `Extract every ${type === 'profile' ? 'public candidate profile' : 'job posting'} from this page text as a JSON array ${want}. Use "" when unknown.\n\n${visible}`, { json: true, temperature: 0 });
+  return Array.isArray(out) ? out : [];
+}
+
+async function addJob(c, s, it) {
+  if (!it.title) return false;
+  const hash = await sha256(`${it.url || ''}|${it.title}|${it.company || ''}`);
+  const scan = heuristicScan([it.title, it.company, it.description, it.rate].join(' '));
+  const r = await c.db.run(`INSERT OR IGNORE INTO jobs (id, source_id, source_url, title, company, location, rate, tags, posted_at, ingested_at, safety_rating, safety_flags, hash)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, uid(), s.id, clean(it.url, 500), clean(it.title, 200), clean(it.company, 120), clean(it.location, 120), clean(it.rate, 80),
+    clean(it.tags, 300), clean(it.posted_at, 60), now(), scan.rating, scan.flags, hash);
+  return r.meta.changes > 0;
+}
+
+async function addCandidate(c, s, it) {
+  const name = clean(it.name || it.title, 80); if (!name) return false;
+  const removed = await c.db.first("SELECT 1 FROM platform_requests WHERE type = 'dsr_candidate_removal' AND instr(lower(details), lower(?)) > 0", name);
+  if (removed) return false;
+  const id = uid();
+  const r = await c.db.run(`INSERT OR IGNORE INTO candidates (id, source_id, source_url, name, headline, skills, region, ingested_at, hash, opt_out) VALUES (?,?,?,?,?,?,?,?,?,0)`,
+    id, s.id, clean(it.url, 500), name, clean(it.headline || it.description, 300), clean(it.skills || it.tags, 300), clean(it.region || it.location, 60), now(),
+    await sha256(`${it.url || ''}|${name.toLowerCase()}`));
+  if (!r.meta.changes) return false;
+  await c.db.run("INSERT OR IGNORE INTO pipeline (id, ref, name, stage, owner, updated_at) VALUES (?,?,?,'Ingested','pipeline',?)", uid(), 'cand:' + id, name, now());
+  return true;
+}

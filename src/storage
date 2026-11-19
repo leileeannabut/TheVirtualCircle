@@ -1,0 +1,147 @@
+// Paperwork storage (KYC photos, BIR 2307 PDFs).
+// Default: the Founder's own Google Drive (free), connected once from Ops → Settings with OAuth.
+//   Scope is drive.file: the platform can only see files and folders it created itself.
+// Optional: Cloudflare R2 if a binding named FILES is added later (requires a card on file with Cloudflare).
+import { fail, now, bytesToB64, b64ToBytes, sha256, randHex } from './lib.js';
+
+const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const ROOT_NAME = 'The Virtual Circle (private)';
+
+// Endpoints can be pointed at a local mock only in DEV_MODE (used by the e2e test).
+const urls = (env) => {
+  const dev = env.DEV_MODE === 'true';
+  return {
+    auth: (dev && env.GOOGLE_AUTH_URL) || 'https://accounts.google.com/o/oauth2/v2/auth',
+    token: (dev && env.GOOGLE_TOKEN_URL) || 'https://oauth2.googleapis.com/token',
+    api: (dev && env.GOOGLE_API_URL) || 'https://www.googleapis.com',
+  };
+};
+
+export const storageMode = (c) => (c.env.FILES ? 'r2' : c.cfg.drive_refresh_token ? 'gdrive' : 'none');
+
+export async function putFile(c, { folder, name, bytes, contentType }) {
+  if (c.env.FILES) {
+    const key = `${folder}/${name}`;
+    await c.env.FILES.put(key, bytes, { httpMetadata: { contentType } });
+    return key;
+  }
+  if (!c.cfg.drive_refresh_token) fail('Document storage is not connected yet. Please try again later.', 503);
+  return 'gdrive:' + (await driveUpload(c, folder, name, bytes, contentType));
+}
+
+export async function getFile(c, ref) {
+  if (!ref) return null;
+  if (ref.startsWith('gdrive:')) {
+    const r = await driveFetch(c, `/drive/v3/files/${encodeURIComponent(ref.slice(7))}?alt=media`);
+    if (!r.ok) return null;
+    return { body: r.body, contentType: r.headers.get('content-type') || 'application/octet-stream' };
+  }
+  const obj = c.env.FILES && (await c.env.FILES.get(ref));
+  return obj ? { body: obj.body, contentType: obj.httpMetadata?.contentType || 'application/octet-stream' } : null;
+}
+
+// ── OAuth connect flow (Founder / Admin IT only; routes call these) ──
+export async function driveConnectUrl(c, origin) {
+  if (!c.env.GOOGLE_CLIENT_ID || !c.env.GOOGLE_CLIENT_SECRET) fail('Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Cloudflare first (see README).', 400);
+  const state = randHex(16);
+  await setSys(c, 'drive_oauth_state', `${await sha256(state + c.user.id)}|${now() + 600000}`);
+  const q = new URLSearchParams({ client_id: c.env.GOOGLE_CLIENT_ID, redirect_uri: origin + '/api/oauth/google/callback', response_type: 'code',
+    scope: SCOPE, access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', state });
+  return `${urls(c.env).auth}?${q}`;
+}
+
+export async function driveFinishConnect(c, origin, code, state) {
+  const [h, exp] = String(c.cfg.drive_oauth_state || '').split('|');
+  if (!h || Number(exp) < now() || h !== (await sha256(state + c.user.id))) fail('This connection link expired. Start again from Ops → Settings.', 400);
+  const r = await fetch(urls(c.env).token, { method: 'POST', body: new URLSearchParams({ code, client_id: c.env.GOOGLE_CLIENT_ID,
+    client_secret: c.env.GOOGLE_CLIENT_SECRET, redirect_uri: origin + '/api/oauth/google/callback', grant_type: 'authorization_code' }) });
+  const t = await r.json().catch(() => ({}));
+  if (!r.ok || !t.refresh_token) { console.error('Google token', JSON.stringify(t)); fail('Google did not return access. Try again and approve the request.', 502); }
+  _token = { value: t.access_token, exp: now() + (t.expires_in - 60) * 1000 };
+  await setSys(c, 'drive_refresh_token', await seal(c, t.refresh_token));
+  await setSys(c, 'drive_oauth_state', '');
+  for (const k of ['drive_folder_root', 'drive_folder_kyc', 'drive_folder_bir-2307']) await setSys(c, k, '');
+  const about = await (await driveFetch(c, '/drive/v3/about?fields=user(emailAddress)')).json().catch(() => ({}));
+  await setSys(c, 'drive_account', about.user?.emailAddress || 'connected');
+}
+
+export async function driveDisconnect(c) {
+  for (const k of ['drive_refresh_token', 'drive_account', 'drive_folder_root', 'drive_folder_kyc', 'drive_folder_bir-2307']) await setSys(c, k, '');
+  _token = null;
+}
+
+// ── Drive API ──
+let _token = null;
+async function accessToken(c) {
+  if (_token && _token.exp > now()) return _token.value;
+  const refresh = await unseal(c, c.cfg.drive_refresh_token || (await getSys(c, 'drive_refresh_token')));
+  const r = await fetch(urls(c.env).token, { method: 'POST', body: new URLSearchParams({ client_id: c.env.GOOGLE_CLIENT_ID,
+    client_secret: c.env.GOOGLE_CLIENT_SECRET, refresh_token: refresh, grant_type: 'refresh_token' }) });
+  const t = await r.json().catch(() => ({}));
+  if (!r.ok) { console.error('Google refresh', JSON.stringify(t)); fail('Google Drive access was revoked or expired. Reconnect it in Ops → Settings.', 503); }
+  _token = { value: t.access_token, exp: now() + (t.expires_in - 60) * 1000 };
+  return _token.value;
+}
+async function driveFetch(c, path, init = {}) {
+  const tok = await accessToken(c);
+  return fetch(urls(c.env).api + path, { ...init, headers: { ...(init.headers || {}), authorization: 'Bearer ' + tok } });
+}
+
+async function folderId(c, name, parent) {
+  const key = 'drive_folder_' + (parent ? name.toLowerCase() : 'root');
+  const cached = c.cfg[key] || (await getSys(c, key));
+  if (cached) return cached;
+  const q = `name = '${name.replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false` + (parent ? ` and '${parent}' in parents` : '');
+  const found = await (await driveFetch(c, '/drive/v3/files?fields=files(id)&q=' + encodeURIComponent(q))).json();
+  let id = found.files?.[0]?.id;
+  if (!id) {
+    const r = await driveFetch(c, '/drive/v3/files?fields=id', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', ...(parent ? { parents: [parent] } : {}) }) });
+    if (!r.ok) { console.error('Drive folder', await r.text()); fail('Could not create the Drive folder.', 502); }
+    id = (await r.json()).id;
+  }
+  await setSys(c, key, id); c.cfg[key] = id;
+  return id;
+}
+
+async function driveUpload(c, folder, name, bytes, contentType, retried) {
+  const root = await folderId(c, ROOT_NAME);
+  const parent = await folderId(c, folder.split('/')[0].toUpperCase(), root);
+  const boundary = 'tvc' + randHex(8);
+  const meta = JSON.stringify({ name: name.replace(/\//g, '_'), parents: [parent] });
+  const head = new TextEncoder().encode(`--${boundary}\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\ncontent-type: ${contentType}\r\n\r\n`);
+  const tail = new TextEncoder().encode(`\r\n--${boundary}--`);
+  const data = new Uint8Array(bytes instanceof ArrayBuffer ? bytes : bytes.buffer ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) : bytes);
+  const body = new Uint8Array(head.length + data.length + tail.length); body.set(head); body.set(data, head.length); body.set(tail, head.length + data.length);
+  const r = await driveFetch(c, '/upload/drive/v3/files?uploadType=multipart&fields=id', { method: 'POST', headers: { 'content-type': `multipart/related; boundary=${boundary}` }, body });
+  if (r.status === 404 && !retried) { // a folder was deleted in Drive: forget the cached ids and recreate once
+    for (const k of ['drive_folder_root', 'drive_folder_kyc', 'drive_folder_bir-2307']) { await setSys(c, k, ''); c.cfg[k] = ''; }
+    return driveUpload(c, folder, name, bytes, contentType, true);
+  }
+  if (!r.ok) { console.error('Drive upload', r.status, await r.text()); fail('Could not save the file to Google Drive. Please try again.', 502); }
+  return (await r.json()).id;
+}
+
+// ── system settings (hidden from the Settings tab) and token sealing ──
+async function setSys(c, key, value) {
+  await c.db.run("INSERT INTO config (key, value, note) VALUES (?, ?, 'System: managed automatically') ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value);
+  c.cfg[key] = value;
+}
+async function getSys(c, key) { return (await c.db.first('SELECT value FROM config WHERE key = ?', key))?.value || ''; }
+
+// The refresh token is encrypted with a key derived from PEPPER, so a database export alone cannot use it.
+async function aesKey(c) {
+  if (!c.env.PEPPER) fail('Server is missing PEPPER.', 500);
+  const raw = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(c.env.PEPPER + ':drive-token'));
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+async function seal(c, text) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await aesKey(c), new TextEncoder().encode(text));
+  return bytesToB64(iv) + '.' + bytesToB64(ct);
+}
+async function unseal(c, sealed) {
+  const [iv, ct] = String(sealed || '').split('.');
+  if (!iv || !ct) fail('Google Drive is not connected.', 503);
+  return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64ToBytes(iv) }, await aesKey(c), b64ToBytes(ct)));
+}

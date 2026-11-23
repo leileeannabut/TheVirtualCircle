@@ -1,3 +1,4 @@
+[README.md](https://github.com/user-attachments/files/35304186/README.md)
 # The Virtual Circle
 **Keep the Virtual Circle Glowing ✨**
 
@@ -77,6 +78,8 @@ Paperwork (KYC photos, proof of work, BIR 2307 PDFs) ──► the Founder's own
 
 **Background jobs** (Pages has no scheduler, so ordinary traffic starts them, once each): daily payouts and 2307s after 2:00am Manila, gig earnings release, job-feed ingestion every 6 hours, Circle Hosts every 10 minutes, and cleanup.
 
+**First run:** after deploying, open `/setup.html`. It checks the deployment (API, database, secrets) and lets the owner claim Founder access once with the `SETUP_CODE` secret.
+
 ## Before launch
 - In Circle Ops → Settings, set `site_url`, `countdown_ends_at`, `company_tin` and `company_address`, and **verify every number** in `crisis_resources`.
 - Have a CPA confirm `ewt_rate_default` and the 2307 tax codes.
@@ -89,7 +92,8 @@ Paperwork (KYC photos, proof of work, BIR 2307 PDFs) ──► the Founder's own
 cp .dev.vars.example .dev.vars
 npm run dev                         # http://localhost:8787 with a local database
 node dev/mock-google.mjs &          # fake Google sign-in + Drive on :8790 (local tests only)
-node dev/e2e.mjs shots/             # 221 end-to-end checks + screenshots (needs Playwright)
+node dev/e2e.mjs shots/             # 231 end-to-end checks + screenshots (needs Playwright)
 node dev/hosts-sim.mjs              # Circle Hosts in production mode (real background tick, simulated clock)
+node dev/setup-sim.mjs              # first-run setup in production mode (no SMS provider, Founder claim)
 ```
 `DEV_MODE=true` exists only in `.dev.vars` for local testing: payments complete instantly and test helpers answer on localhost only. **Never add `DEV_MODE` in Cloudflare.**

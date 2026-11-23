@@ -1,0 +1,72 @@
+# How The Virtual Circle earns, with no upfront capital
+
+## Membership at a glance
+| Level | Price | What it is |
+|---|---|---|
+| **Tier 1 · Circle Member** | Free forever | Feed, hubs, messages, Circle BFF, free courses, simulators, job applications, Circle Laughs, booking mentors, Circle Rage Room *Simmer* |
+| **Glow Keeper** (Keep the Circle Glowing project) | Any contribution from ₱20 | Glow ring, badge, Glow Wall spot, +20 free Circle Rage Room throws a day, for 30 days per contribution |
+| **Tier 2 · Circle Pro** | ₱149 / 30 days | All training materials, **earn by teaching** (gigs + modules), shown first to clients, unlimited AI practice |
+
+Founding Ambassadors (up to 50 real VAs who help grow the circle in the first 90 days) get Tier 2 free for 90 days.
+
+**Principle: VAs never pay to belong.** The feed, hubs, messages, Circle BFF, free courses, simulators, job applications and Circle Rage Room are free forever. Money comes from the people who get value from a trusted, verified VA community: clients, and VAs who *choose* an edge. That's what makes members feel they *need* the platform rather than *have to pay* for it.
+
+Running costs are near zero: Cloudflare and Google Drive free tiers. The only small recurring cost is SMS sign-up codes. Every peso earned can go back into the platform.
+
+## The earning options built in
+
+All prices are editable in **Ops → Settings** without touching code.
+
+| Stream | Who pays | Default price | Why they want it | Where |
+|---|---|---|---|---|
+| **Direct job posts** | Clients | ₱299 / 30 days | Reach ID-verified, ranked VAs; applicants arrive with practice scores and certificates | `jobs.html` |
+| **Chat unlock** | Clients | ₱499 per VA | Message a specific verified VA from Talent search | `talent.html` |
+| **Tier 2 · Circle Pro** | VAs (optional) | ₱149 / 30 days, no auto-renew | All training materials, earning by teaching, shown first to clients, unlimited AI practice | `pro.html` |
+| **Teaching gigs** | Aspiring VAs booking mentors | Set by the mentor (from ₱100) | Mentor keeps 80% (`gig_mentor_pct`); 1:1 mentoring, group upskilling, resume reviews, mock interviews | `mentor.html` |
+| **Keep the Circle Glowing** | Anyone (optional) | Any amount from ₱20 | Glow Keeper perks; contributions fund SMS, AI, moderation and free courses | `pro.html` |
+| **Circle Rage Room packs** | Anyone (optional) | 🔥 Boiling ₱50 / 60 throws · 🌋 Volcano ₱99 / 150 throws | *Simmer* stays free (15 throws a day); packs add items, effects and throws | `rage.html` |
+| **Post boost** | Anyone | ₱199 / 7 days | Top of the feed: VAs promoting services, clients hiring, coaches launching courses | Feed |
+| **Mentor modules** | VAs buying training | Set by the coach | Platform keeps 15–50% (coach chooses 50–85%) | `mentor.html` |
+| **Wellness sessions** | Members | Set by practitioner | Platform keeps 15% | `wellness.html` |
+| **Circle Squads** | Clients | $1,500–$5,000 / month | One managed, supervised team; Pod Leader 15%, members 60%, platform keeps the rest | `squads.html` |
+| **Build My Platform** | Founders / businesses | $1.5k–$12k per project | Proof that this stack works: *this platform is the portfolio* | `studio.html` |
+| **Referrals** | Built in | 5% of the platform's cut | Members who invite paying clients earn automatically, so growth is rewarded | Dashboard |
+
+Splits, referral shares, withholding tax and daily payouts with BIR 2307 PDFs are automatic once payments are configured.
+
+## What's passive and what isn't (honestly)
+
+- **Close to passive, once you have members:** job posts, chat unlocks, Tier 2, boosts, teaching-gig and module commissions, Glow Keeper contributions, Circle Rage Room packs, referrals. The platform runs them end to end.
+- **Needs your time:** Build My Platform (your own work, but the biggest tickets), Circle Squads (needs a reliable Pod Leader), Wellness (needs licensed practitioners). Treat these as active income that funds the rest.
+- **Always needs people:** a community lives on moderation and warmth. Plan for a few hours a week (the Mon/Wed/Fri cockpit) and trusted moderators from your Senior VAs.
+
+## Suggested order (bootstrapping)
+
+1. **Months 0–2, free only:** invite your co-VAs and grow the feed, Circle BFF and courses. Keep payments off. Your goal is trust and daily use. Write 2–3 courses in the Circle Academy editor from your own experience. The Circle Hosts (labeled AI) keep the feed from feeling empty, and Founding Ambassadors bring in real members; their free Tier 2 costs you nothing (see [LAUNCH.md](LAUNCH.md)).
+2. **Register the business** (DTI + BIR) and apply to PayMongo while you grow.
+3. **Turn on client-paid streams first:** job posts and chat unlocks. Personally invite clients you know: "Post here, every applicant is ID-verified."
+4. **Add Tier 2 · Circle Pro** once members see value. Its biggest pull is *earning by teaching*: Proven VAs mentor aspiring VAs and keep 80%. Open the Keep the Circle Glowing contributions early, since they need no extra work.
+5. **Use Build My Platform for capital:** one MVP project can fund many months of growth. Show prospects this platform.
+6. **Reinvest:** SMS credits, Gemini (if you outgrow its free tier), a part-time moderator, then paid ads.
+
+## An illustration (not a forecast)
+
+Suppose you have 300 active VAs, 5% of them on Tier 2, and 10 client job posts, 10 chat unlocks and 5 boosts a month:
+- Tier 2: 15 × ₱149 = ₱2,235
+- Job posts: 10 × ₱299 = ₱2,990
+- Unlocks: 10 × ₱499 = ₱4,990
+- Boosts: 5 × ₱199 = ₱995
+
+That's about **₱11,000 a month**, before payment-gateway fees (a few percent per transaction) and tax. A single Build My Platform MVP at $1,500 would add roughly six times that once. Your real numbers depend entirely on how many members and clients you bring in, so treat this as a way to think about it, not a promise.
+
+## About "donations"
+The Virtual Circle is a business, so *Keep the Circle Glowing* money is **support for the platform, not a charitable donation**. It isn't tax-deductible, and the site says so. Record it as income with your CPA. If you later want real tax-deductible donations (for example for a VA mental-health fund), set up a separate non-stock, non-profit organisation registered with the SEC and accredited with BIR, and keep its money separate.
+
+## Circle Laughs (comedy) and future income
+Circle Laughs is free and built for engagement. It's where people come back daily, which makes every other stream work. Once the podcast has listeners, you can sell **sponsor reads** to VA-friendly brands (tools, co-working spaces, upskilling schools) and split them with the hosts. Add those manually via Ops → Finance → Record a manual payment.
+
+## Before charging anyone
+- Register the business (DTI or SEC) and with BIR. Issue receipts, and file the 2307s the platform generates with your CPA.
+- Publish clear refund terms for each paid item.
+- Have the Privacy Notice reviewed and register with the NPC if required.
+- Only let licensed practitioners run Wellness sessions, and verify every PRC license.

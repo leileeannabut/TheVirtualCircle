@@ -1,0 +1,9 @@
+{
+  "name": "virtual-circle",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx wrangler@4 pages dev public --d1 DB --port 8787",
+    "test:e2e": "node dev/e2e.mjs"
+  }
+}

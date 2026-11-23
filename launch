@@ -1,0 +1,78 @@
+# The 90-day launch playbook
+
+A new community's hardest moment is the first visit: an empty feed tells people "nobody's here", and they leave. This playbook fills the first 90 days honestly, using three things that work together:
+
+| | Who | What they do | Honest because |
+|---|---|---|---|
+| **Circle Hosts 🤖** | 8 AI helpers | Post a daily calendar of conversation starters, tips and memes; welcome new members; reply when nobody else has | Every post is labeled **🤖 Circle Host · AI**, their profiles say so, and the Privacy Notice explains them |
+| **Founding Ambassadors 🌟** | Up to 50 real VAs | Welcome, answer, share and invite, about 30 minutes a week | They speak as themselves; one account per person |
+| **You and your first co-VAs** | The founding team | Real posts, real answers, real invitations | It's you |
+
+> **Why not fake members?** Fake personas that pretend to be people break trust the moment one is discovered. That's fatal for a platform whose promise is *verified and scam-proof*. Fake engagement also breaks consumer-protection and platform rules in many countries. Labeled hosts get you most of the benefit (an active feed and fast answers) with none of that risk. The 50 personas in [RECRUITING.md](RECRUITING.md) are planning notes for **who to invite**. They are never accounts.
+
+---
+
+## 1. Circle Hosts (labeled AI)
+
+| Host | Role | Posts |
+|---|---|---|
+| 🌙 **Luna** | Night-shift host, welcomes | Morning check-in questions (odd days), private welcome notifications, gentle replies to unanswered *struggles* (resources only, never advice) |
+| ✨ **Glow** | Celebrations | Win and milestone prompts (even days), cheers for unanswered *wins* |
+| 🎓 **Coach Sage** | Circle Academy | Daily skill tip, first reply to unanswered *questions* |
+| 🔎 **Shield** | Circle Scam-Buster | Weekly scam-awareness tip (Wednesdays) |
+| 😂 **Punchline** | Circle Laughs | Nightly meme, Monday "finish this sentence" prompt |
+| 🌏 **Aurora** · 🌊 **Coral** · 🌄 **Summit** | Hub hosts (north · central · south) | Evening conversation starters in the regional hubs |
+
+**Daily rhythm (Manila time):** 7:30 feed question or win prompt · 9:00 Monday Laughs prompt · 12:00 tip · 18:00 hub question · 21:00 meme.
+The hosts only wake up when someone visits the site (at most every 10 minutes), so on a quiet day a post that would go out more than 2½ hours late is skipped instead of appearing out of time (`hosts_late_minutes`, default 150). The Monday prompt may still go out later that day, and if the team already set a prompt that week, Punchline keeps yours.
+The 90 days follow a weekly theme: welcome → night-shift survival → first clients → tools → client communication → rates and getting paid → scam awareness → boundaries and burnout → upskilling → home life → newbie to seasoned → giving back → celebrating 90 days.
+
+**What hosts never do:** DM anyone, connect, join Circle BFF, apply for jobs, appear in Talent, Squads, podcast credits or the Hall of Fame, review, pay or get paid (their referral codes earn nothing), take a Founders Cohort slot, count as members, or log in. The 🤖 label comes from the account itself, and members can't register names containing "Circle Host" or "(AI)", so nobody can pass as a host. They never claim to be human, invent testimonials or statistics, or give medical, legal or tax certainty.
+
+**They step back on their own.** The hosts check how many posts *real* members made per day over the last week (`hosts_fade_posts_per_day`, default 25):
+- below 25/day: normal calendar
+- 25–49/day: **light mode**, only the daily tip and Monday prompt
+- 50+/day: **calendar paused**; welcomes and replies to unanswered posts continue (those still help)
+
+**Your controls (Circle Ops → Hosts):** switch on/off · set Day 1 · see today's day of 90 and the fade level · preview the next 7 days, memes included · **Edit**, **Skip** or **Un-skip** any upcoming post · **Run now** (only while switched on) · activity log. The Founder, GM and IT admin control the switch, Day 1 and Run now; other staff can edit and skip.
+Settings in Circle Ops → Settings: `hosts_reply_after_hours` (default 3), `hosts_fade_posts_per_day` (default 25), `hosts_late_minutes` (default 150).
+With a `GEMINI_API_KEY`, replies to questions are written by AI under strict rules (labeled, no links, no certainty, invites real VAs to add their experience). If an AI reply ever contains a link, handle or contact detail, it is thrown away and the built-in reply is used instead. Without a key, built-in replies point to the right Circle feature.
+
+**Before Day 1:** the hosts stay completely quiet after you deploy until you choose Day 1, so there's time to read the first week in Circle Ops → Hosts and skip or edit anything that doesn't sound like your circle. To rewrite the calendar in bulk, edit a JSON copy and run `node dev/build-host-calendar.mjs calendar.json` (it rejects contact details and links and flags anything that sounds human, non-English or brand-based), then redeploy: posts that haven't gone out yet pick up the new wording automatically, and posts your team edited in Circle Ops keep your edits.
+
+---
+
+## 2. Founding Ambassadors (real VAs)
+
+- **Who:** verified VAs (any tier) who are kind, active and trusted. Cap: `ambassador_cap` (50).
+- **How:** they apply at **More → 🌟 Founding Ambassadors**; you approve in **Circle Ops → Creators**.
+- **Perks:** 90 days of free Tier 2 · Circle Pro (`ambassador_days`), the 🌟 badge on every post, the founding leaderboard (ranked by invited members who completed verification), first invites to new features.
+- **Weekly playbook (about 30 minutes):** welcome 3 new members · answer 2 questions (add real experience under any host reply) · share one win, tip or honest struggle · invite VAs they trust · post or react on Circle Laughs · report anything scammy.
+- **Rules:** speak as yourself · tell people you're an ambassador when inviting · never promise jobs or income · keep it on-platform.
+
+Referral commissions still apply as usual: an ambassador whose invitee pays for something earns the normal referral share.
+
+---
+
+## 3. Your weekly founder rhythm (2 hours)
+
+| Day | 40 minutes |
+|---|---|
+| **Monday · Pulse** | Circle Ops → Pulse (new members, activity) and → Hosts (day of 90, fade level, the week's host posts). Thank 3 ambassadors by name in a post |
+| **Wednesday · Escalations** | Reports, flags, disputes, KYC queue. Review ambassador applications |
+| **Friday · Strategy** | Pick next week's outreach segment from RECRUITING.md; send 10 personal invitations; write one real post yourself |
+
+## 4. Milestones to watch
+
+| By | Aim | If you're behind |
+|---|---|---|
+| Day 7 | 25 verified members, 5 ambassadors | Personally invite from your own network; post in the groups you're already part of (as yourself) |
+| Day 30 | 100 members, 15 ambassadors, members answering before the hosts | Run a "first-client story" week; ask ambassadors to bring one batchmate each |
+| Day 60 | 250 members, hosts in light mode most days | Launch Circle Mentors gigs; invite 3 practitioners and 2 comedians |
+| Day 90 | 500 members, hosts paused or light, first client job posts | Switch hosts off or keep them light; thank the founding ambassadors publicly |
+
+These are targets, not forecasts. What matters most is **the share of posts that get a reply from a real member within 3 hours**. When that's high, the circle is running itself.
+
+## 5. After day 90
+
+The calendar ends on its own. Keep or switch off the hosts' welcomes and replies (many communities keep a labeled helper). Ambassador Tier 2 ends after 90 days; renew the best ambassadors by approving a new application, or move them to Circle Mentors where they can earn.

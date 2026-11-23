@@ -1,0 +1,98 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0a1024"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/css/tokens.css">
+<title>Site Setup — The Virtual Circle</title></head><body>
+<main class="wrap page">
+  <div class="page-head"><div><div class="eyebrow">For the site owner</div><h1 style="font-size:clamp(2rem,4vw,2.8rem);margin:0">Set up your circle</h1></div>
+    <p class="muted">This page checks that your Cloudflare deployment is complete and lets you claim Founder access once. It never shows your secret values.</p></div>
+  <div class="split">
+    <div class="stack" id="status"><div class="card"><p class="muted">Checking your site…</p></div></div>
+    <aside class="stack" id="claim"></aside>
+  </div>
+</main>
+<script type="module">
+import { api, $, esc, shell, say, busy, chip, STAFF, FINANCE } from '/js/app.js';
+const { user } = await shell();
+const code = (s) => `<code>${s}</code>`;
+
+// Talk to the API directly so we can tell "not deployed" (a web page comes back) from "deployed but not configured"
+async function probe() {
+  try {
+    const r = await fetch('/api/setup/status', { credentials: 'same-origin' });
+    if (!(r.headers.get('content-type') || '').includes('application/json')) return { state: 'no_api', http: r.status };
+    const d = await r.json();
+    if (r.status === 503) return { state: 'no_db', error: d.error };
+    if (!r.ok) return { state: 'error', error: d.error || 'HTTP ' + r.status };
+    return { state: 'ok', ...d };
+  } catch { return { state: 'offline' }; }
+}
+
+const NO_API = `<div class="card"><div class="eyebrow">Step 1 · The API</div><h2>The site's API isn't running</h2>
+  <p class="muted">Your pages are online, but the server part (Cloudflare Pages <b>Functions</b>) didn't deploy, so sign-up and sign-in can't work yet. This is almost always one of these:</p>
+  <ol class="steps">
+    <li><b>Folders were flattened when uploading to GitHub.</b> At the top of your repository you must see the folders ${code('public')}, ${code('functions')} and ${code('src')}, and this exact file: ${code('functions/api/[[path]].js')}. If you see names like ${code('src_api.js')} or every file in one folder, upload again keeping the folders (on github.com: <i>Add file → Upload files</i>, then drag the <b>contents</b> of the unzipped ${code('thevirtualcircle')} folder, folders included).</li>
+    <li><b>Build settings.</b> Cloudflare → Workers &amp; Pages → your project → Settings → Build: Framework preset <b>None</b>, Build command <b>empty</b>, Build output directory ${code('public')}, Root directory <b>empty</b>. Then Deployments → <b>Retry deployment</b>.</li>
+    <li><b>Deployed by drag-and-drop?</b> Uploading files in the Cloudflare dashboard publishes the pages only, without the API. Connect the project to your GitHub repository instead (DEPLOY.md, Part B2).</li>
+    <li><b>Check it worked:</b> Deployments → open the latest deployment → <b>Functions</b> tab should list ${code('/api/[[path]]')}.</li>
+  </ol>
+  <button class="btn" id="retry">Check again</button></div>`;
+const NO_DB = (msg) => `<div class="card"><div class="eyebrow">Step 2 · The database</div><h2>Connect the database</h2>
+  <p class="muted">${esc(msg || '')}</p>
+  <ol class="steps"><li>Cloudflare → <b>Storage &amp; Databases → D1</b>: create a database named ${code('virtual-circle')} if you haven't.</li>
+    <li>Your Pages project → <b>Settings → Bindings → Add → D1 database</b>: variable name ${code('DB')}, database ${code('virtual-circle')}. Add it for <b>Production</b>.</li>
+    <li>Deployments → <b>Retry deployment</b> (bindings apply to new deployments only).</li></ol>
+  <button class="btn" id="retry">Check again</button></div>`;
+
+const ROWS = [
+  ['dev_mode_off', 'DEV_MODE is not set', 'Required. DEV_MODE is for local testing only; remove it from the Cloudflare variables now.', true],
+  ['pepper', 'PEPPER secret', 'Required. A long random secret used to protect ID numbers and the Google Drive connection.', true],
+  ['setup_code', 'SETUP_CODE secret', 'Needed once, to claim Founder access below. Use a password generator: 20+ random characters (16 minimum).', false],
+  ['google_oauth', 'Google sign-in for Drive (GOOGLE_CLIENT_ID / SECRET)', 'Needed for ID uploads and BIR 2307 PDFs (DEPLOY.md, Part C).', false],
+  ['file_storage', 'Private file storage connected', 'After you are Founder: Circle Ops → Settings → Connect Google Drive. Until then, ID uploads wait.', false],
+  ['sms', 'SMS codes (SEMAPHORE_KEY)', 'Optional. Without it, sign-up skips the mobile-code step and the ID review is the identity check. Add it when you can.', false],
+  ['site_url', 'site_url setting', 'After you are Founder: Circle Ops → Settings → site_url = your site address.', false],
+  ['gemini', 'GEMINI_API_KEY', 'Optional. Smarter AI practice clients and Circle Host replies; simple built-in answers work without it.', false],
+  ['paymongo', 'PayMongo keys', 'Optional until you start charging (DEPLOY.md, Part E).', false],
+  ['xendit', 'Xendit keys', 'Optional, for USD invoices and payouts.', false],
+];
+function checklist(s) {
+  if (!s.checks) return `<div class="card"><div class="eyebrow">Status</div><h2>Your site is running ✨</h2><p class="muted">The API and database are working and this site has a Founder. The detailed checklist is visible to the Circle team.</p>
+    <a class="btn ghost" href="/">Go to the home page</a></div>`;
+  return `<div class="card"><div class="card-head"><div><div class="eyebrow">Status</div><h2 style="margin:0">API and database are working ✓</h2></div>${chip('Database v' + s.schema_version, 'ok')}</div>
+    <ul class="list" style="margin-top:1rem">${ROWS.map(([k, label, help, must]) => { const okv = !!s.checks[k];
+      return `<li style="align-items:flex-start"><span><b>${okv ? '✅' : must ? '⛔' : '◻️'} ${esc(label)}</b><br><span class="muted small">${esc(help)}</span></span>${chip(okv ? 'Done' : must ? 'Fix now' : 'Not yet', okv ? 'ok' : must ? 'bad' : 'warn')}</li>`; }).join('')}</ul>
+    <p class="faint small" style="margin:1rem 0 0">Add secrets in Cloudflare → your Pages project → Settings → Variables and secrets (type <b>Secret</b>), then Deployments → Retry deployment.</p></div>`;
+}
+function claimCard(s) {
+  if (s.founder_exists) {
+    return user && [...STAFF, ...FINANCE].includes(user.role)
+      ? `<div class="card glow"><div class="eyebrow">Admin access</div><h3>You're on the Circle team</h3><p class="muted small">Run the platform from Circle Ops.</p><a class="btn block" href="/admin.html">Open Circle Ops</a></div>`
+      : `<div class="card"><div class="eyebrow">Admin access</div><h3>This site already has a Founder</h3><p class="muted small">Team members: create an account, then ask the Founder to give you a role in Circle Ops → People.</p></div>`;
+  }
+  if (!user) return `<div class="card glow"><div class="eyebrow">Claim Founder access</div><h3>Step 1: create your account</h3>
+    <p class="muted small">Create your own account first (choose <b>A client / recruiter</b> if you're not joining as a VA). You can stop at the ID step and come back here.</p>
+    <a class="btn block" href="/join.html?next=/setup.html">Create my account</a><p class="center small" style="margin:.8rem 0 0"><a href="/join.html?next=/setup.html">I already have one: sign in</a></p></div>`;
+  return `<div class="card glow"><div class="eyebrow">Claim Founder access</div><h3>Step 2: enter your setup code</h3>
+    <p class="muted small">Signed in as <b>${esc(user.name)}</b> (${esc(user.email)}). Enter the ${code('SETUP_CODE')} you saved in Cloudflare. This works <b>once</b>: after that, only the Founder can give anyone admin roles.</p>
+    ${s.checks && !s.checks.setup_code ? `<p class="notice warn small">No setup code yet. In Cloudflare → your Pages project → Settings → Variables and secrets, add a <b>Secret</b> named ${code('SETUP_CODE')}: 20+ random characters from a password generator (16 minimum), saved in your password manager. Then Deployments → Retry deployment, and reload this page.</p>` : ''}
+    <form id="claimf"><label for="sc">Setup code</label><input id="sc" name="code" type="password" required autocomplete="off" minlength="16">
+      <button class="btn block" style="margin-top:1rem">Make me the Founder</button><div class="msg" id="cm"></div></form></div>`;
+}
+
+async function render() {
+  const s = await probe();
+  if (s.state === 'no_api') { $('#status').innerHTML = NO_API; $('#claim').innerHTML = ''; }
+  else if (s.state === 'no_db') { $('#status').innerHTML = NO_DB(s.error); $('#claim').innerHTML = ''; }
+  else if (s.state === 'offline') { $('#status').innerHTML = '<div class="card"><h2>Can\'t reach the site</h2><p class="muted">Check your internet connection.</p><button class="btn" id="retry">Check again</button></div>'; }
+  else if (s.state === 'error') { $('#status').innerHTML = `<div class="card"><h2>Something went wrong</h2><p class="muted">${esc(s.error)}</p><p class="muted small">Cloudflare → your project → Deployments → latest → Functions → Real-time logs shows the details.</p><button class="btn" id="retry">Check again</button></div>`; }
+  else { $('#status').innerHTML = checklist(s); $('#claim').innerHTML = claimCard(s); }
+  if (s.state !== 'ok') { $('#claim').innerHTML = ''; $('.split').style.gridTemplateColumns = 'minmax(0,1fr)'; } // the diagnosis gets the full width
+  $('#retry')?.addEventListener('click', () => location.reload());
+  $('#claimf')?.addEventListener('submit', (e) => { e.preventDefault();
+    busy(e.submitter, async () => { try { await api('setup/claim', { body: { code: $('#sc').value } }); say($('#cm'), "You're the Founder ✨ Opening Circle Ops…", 'ok'); setTimeout(() => location.assign('/admin.html'), 900); }
+      catch (err) { say($('#cm'), err.message); } }); });
+}
+render();
+</script>
+</body></html>

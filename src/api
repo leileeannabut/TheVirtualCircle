@@ -7,6 +7,7 @@ import { SOCIAL_ROUTES } from './social.js';
 import { MEMBERSHIP_ROUTES } from './membership.js';
 import { COMEDY_ROUTES } from './comedy.js';
 import { HOST_ROUTES, runHosts } from './hosts.js';
+import { SETUP_ROUTES } from './setup.js';
 import { processPayment, runPayouts } from './payments.js';
 import { ingest } from './ingest.js';
 
@@ -60,7 +61,7 @@ export async function handleApi(request, env, ctx) {
       if (path.startsWith('webhooks/')) return await webhook(c, path.slice(9), request);
       if (path.startsWith('__dev/')) return await devRoute(c, path.slice(6), request);
       const method = request.method === 'HEAD' ? 'GET' : request.method;
-      const handler = ROUTES[`${method} ${path}`] || SOCIAL_ROUTES[`${method} ${path}`] || MEMBERSHIP_ROUTES[`${method} ${path}`] || COMEDY_ROUTES[`${method} ${path}`] || HOST_ROUTES[`${method} ${path}`];
+      const handler = ROUTES[`${method} ${path}`] || SOCIAL_ROUTES[`${method} ${path}`] || MEMBERSHIP_ROUTES[`${method} ${path}`] || COMEDY_ROUTES[`${method} ${path}`] || HOST_ROUTES[`${method} ${path}`] || SETUP_ROUTES[`${method} ${path}`];
       if (!handler) return json({ error: 'Not found' }, 404);
       // CSRF: state-changing requests must come from our own origin
       if (method === 'POST' && request.headers.get('origin') !== url.origin) return json({ error: 'Bad origin' }, 403);

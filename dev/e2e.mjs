@@ -66,7 +66,15 @@ const early = await founder.page.evaluate(async () => { const f = new FormData()
   f.append('id_file', new File([new Uint8Array([137, 80, 78, 71])], 'a.png', { type: 'image/png' })); f.append('selfie_file', new File([new Uint8Array([137, 80, 78, 71])], 'b.png', { type: 'image/png' }));
   return (await fetch('/api/kyc/submit', { method: 'POST', body: f })).status; });
 ok(early === 503, 'ID uploads pause until Drive is connected');
-await devRole(founder.email, 'founder', 'active');
+// Admin access the real way: the site owner claims Founder once with the SETUP_CODE secret (no database console)
+await founder.page.goto(BASE + '/setup.html'); await founder.page.waitForSelector('#claimf');
+ok((await founder.page.textContent('#status')).includes('API and database are working'), 'Setup checklist: API and database are working');
+ok((await founder.page.textContent('#status')).includes('SETUP_CODE secret'), 'Setup checklist lists what to configure (never the secret values)');
+await shot(founder.page, '00a-setup');
+await founder.page.fill('#sc', 'not-the-right-code-1'); await founder.page.click('#claimf button'); await founder.page.waitForSelector('#cm.err');
+ok((await founder.page.textContent('#cm')).includes('not right') && (await founder.api('me')).user.role === 'client', 'A wrong setup code is refused');
+await founder.page.fill('#sc', 'dev-setup-code-123'); await founder.page.click('#claimf button'); await founder.page.waitForURL(/\/admin(\.html)?$/);
+const fme = (await founder.api('me')).user; ok(fme.role === 'founder' && fme.status === 'active', 'Founder claimed admin access with the setup code and landed in Circle Ops');
 
 console.log('Connect Google Drive (mock Google)');
 await founder.page.goto(BASE + '/admin.html'); await founder.page.click('[data-tab=settings]'); await founder.page.waitForSelector('#drive a.btn');
@@ -454,6 +462,28 @@ await nb.page.click('#compose button.btn:not(.quiet):not(.sm)'); await nb.page.w
 ok(await nb.page.waitForFunction(() => document.querySelector('#posts').textContent.includes('Phone hotspot on the bus'), null, { timeout: 8000 }).then(() => true, () => false), 'Expectation-vs-Reality meme posted from the UI');
 await nb.page.click('[data-tab=podcast]'); await nb.page.waitForSelector('#episodes .embed iframe'); await shot(nb.page, '47-tawa-podcast');
 await nb.page.goto(BASE + '/comedy.html#article=' + col.id); await nb.page.waitForSelector('article.essay'); await shot(nb.page, '48-tawa-column', false);
+
+console.log('Setup is one-time');
+ok((await nb.api('setup/claim', { code: 'dev-setup-code-123' })).status === 409, 'Nobody else can claim Founder once it is taken, even with the code');
+const st = await nb.api('setup/status'); ok(st.founder_exists && !st.checks, 'After setup, members see no configuration details');
+ok((await founder.api('setup/status')).checks.pepper === true, 'The team still sees the checklist');
+await guest.page.goto(BASE + '/no-such-page'); ok((await guest.page.textContent('h1')).includes('drifted'), 'Unknown pages show a friendly 404');
+
+console.log('Layout: wide screens and phones');
+const PAGES = ['/', '/feed.html', '/hubs.html', '/messages.html', '/academy.html', '/bff.html', '/jobs.html', '/comedy.html', '/talent.html', '/connections.html', '/profile.html', '/app.html',
+  '/ambassador.html', '/mentor.html', '/wellness.html', '/rage.html', '/scambuster.html', '/squads.html', '/studio.html', '/pro.html', '/privacy.html', '/setup.html', '/cms.html'];
+for (const [w, h] of [[390, 844], [1904, 1000]]) {
+  await nb.page.setViewportSize({ width: w, height: h }); const wide = [];
+  for (const p of PAGES) { await nb.page.goto(BASE + p); await nb.page.waitForLoadState('networkidle');
+    const m = await nb.page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: innerWidth, main: (document.querySelector('main') || document.body).getBoundingClientRect().width }));
+    if (m.sw > m.iw + 1) wide.push(`${p} (${m.sw}px)`);
+    if (w === 1904 && m.main < 1500 && p !== '/privacy.html') wide.push(`${p} only ${Math.round(m.main)}px wide`); }
+  ok(!wide.length, `${w}px: every page fits the screen${w > 1000 ? ' and uses its width' : ' with no sideways scrolling'}${wide.length ? ' → ' + wide.join(', ') : ''}`);
+}
+await nb.page.setViewportSize({ width: 1904, height: 1000 }); await nb.page.goto(BASE + '/studio.html'); await shot(nb.page, '52-studio-1904', false);
+await nb.page.goto(BASE + '/feed.html'); await nb.page.waitForSelector('article.post'); await shot(nb.page, '53-feed-1904', false);
+await nb.page.setViewportSize({ width: 390, height: 844 }); await nb.page.goto(BASE + '/studio.html'); await shot(nb.page, '54-studio-phone', false);
+await nb.page.setViewportSize({ width: 1280, height: 900 });
 
 console.log('Circle Hosts (labeled AI)');
 const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);

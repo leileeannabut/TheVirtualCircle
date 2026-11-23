@@ -1,0 +1,57 @@
+// First-run setup: a status checklist for the site owner, and a one-time "claim Founder" step protected by a secret
+// SETUP_CODE that only the owner can set (Cloudflare → Pages project → Settings → Variables and secrets).
+// Once used, the claim is closed for good (even if the Founder role later changes hands) and the checklist is only
+// shown to staff.
+import { fail, now, sha256, safeEqual, rate, audit, ipBucket } from './lib.js';
+import { need, STAFF } from './routes.js';
+import { storageMode } from './storage.js';
+
+const MIN_CODE = 16;
+const MAX_FAILURES = 20; // wrong codes in total before the claim locks (a new SETUP_CODE unlocks it)
+const setupCode = (c) => String(c.env.SETUP_CODE || '').trim(); // forgive a stray space or newline pasted into Cloudflare
+const closed = async (c) => !!c.cfg.setup_claimed_at || !!(await c.db.first("SELECT 1 FROM users WHERE role = 'founder' LIMIT 1"));
+
+export const SETUP_ROUTES = {
+  async 'GET setup/status'(c) {
+    const founder = await closed(c);
+    const out = { api: true, database: true, founder_exists: founder, signed_in: !!c.user, schema_version: Number(c.cfg.schema_version) || 0 };
+    if (founder && !(c.user && STAFF.includes(c.user.role))) return out; // after setup, details are for the team only
+    return { ...out, min_code: MIN_CODE, checks: {
+      pepper: !!c.env.PEPPER,
+      setup_code: setupCode(c).length >= MIN_CODE,
+      sms: !!c.env.SEMAPHORE_KEY,
+      google_oauth: !!(c.env.GOOGLE_CLIENT_ID && c.env.GOOGLE_CLIENT_SECRET),
+      file_storage: storageMode(c) !== 'none',
+      gemini: !!c.env.GEMINI_API_KEY,
+      paymongo: !!c.env.PAYMONGO_SECRET_KEY,
+      xendit: !!c.env.XENDIT_SECRET_KEY,
+      site_url: !!c.cfg.site_url,
+      dev_mode_off: c.env.DEV_MODE !== 'true',
+    } };
+  },
+  async 'POST setup/claim'(c) {
+    await rate(c, 'claim:' + ipBucket(c.ip), 5, 3600);
+    if (!c.user) fail('Create your account (or sign in) first, then come back here.', 401);
+    const u = need(c); // suspended accounts can't claim
+    const code = setupCode(c);
+    if (code.length < MIN_CODE) fail(`Add a SETUP_CODE secret (${MIN_CODE}+ characters, from a password generator) in Cloudflare first: Pages project → Settings → Variables and secrets, then redeploy.`, 409);
+    if (await closed(c)) fail('This site already has a Founder. Ask them to give you a role in Circle Ops → People.', 409);
+    await rate(c, 'claim-u:' + u.id, 5, 3600);
+    // A site-wide cap on wrong guesses, tied to this particular code, so rotating addresses or accounts doesn't help
+    const lockKey = 'claim-fail:' + (await sha256(code)).slice(0, 16);
+    const lock = await c.db.first('SELECT count FROM rate_limits WHERE key = ? AND reset_at > ?', lockKey, now());
+    if (lock && lock.count >= MAX_FAILURES) fail('Too many wrong setup codes. Set a new SETUP_CODE secret in Cloudflare, retry the deployment, and try again.', 429);
+    if (!safeEqual(await sha256(String(c.body.code || '').trim()), await sha256(code))) {
+      await rate(c, lockKey, 1e9, 365 * 86400); // counts the failure (never throws)
+      await audit(c, 'setup_claim_failed', u.id, c.ip);
+      fail('That setup code is not right.', 403);
+    }
+    // One statement, so two people can never both become Founder
+    const r = await c.db.run(`UPDATE users SET role = 'founder', status = 'active', mobile_verified = 1, va_rank = 4
+      WHERE id = ? AND status NOT IN ('banned', 'suspended') AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'founder')`, u.id);
+    if (!r.meta.changes) fail('This site already has a Founder.', 409);
+    await c.db.run("INSERT INTO config (key, value, note) VALUES ('setup_claimed_at', ?, 'System: when the Founder claimed the site (the claim stays closed)') ON CONFLICT(key) DO UPDATE SET value = excluded.value", String(now()));
+    await audit(c, 'setup_claim_founder', u.id, u.email);
+    return { ok: true, at: now() };
+  },
+};

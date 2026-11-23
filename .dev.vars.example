@@ -1,6 +1,8 @@
 # Local testing only — never add DEV_MODE in Cloudflare.
 DEV_MODE=true
 PEPPER=dev-pepper-change-me
+# One-time code to claim Founder access at /setup.html (in Cloudflare: a long secret only you know)
+SETUP_CODE=dev-setup-code-123
 PAYMONGO_WEBHOOK_SECRET=whsk_dev
 XENDIT_CALLBACK_TOKEN=xnd_dev
 # Points Google Drive at the local mock (node dev/mock-google.mjs). Only honoured when DEV_MODE=true.

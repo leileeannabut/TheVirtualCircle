@@ -1,292 +1,108 @@
-// Circle Membership, "Keep the Circle Glowing" contributions, the tiered Circle Rage Room, and Tier 2 teaching gigs.
-//   Tier 1 · Circle Member  — free forever.
-//   Glow Keeper             — any contribution ≥ supporter_min_php; supporter perks for supporter_days.
-//   Tier 2 · Circle Pro     — paid (pro_price_php / 30 days): all training materials + earning by teaching.
-import { fail, now, uid, clean, cfgNum, cfgJson, rate, randHex, round2, audit } from './lib.js';
-import { OFF_PLATFORM, heuristicScan } from './services.js';
-import { checkout } from './payments.js';
-import { need, needActive, STAFF, FINANCE } from './routes.js';
-import { isPro, can, notify, rankName } from './social.js';
+// Shared helpers: HTTP, crypto, D1 access, config, rate limits, files.
+const enc = new TextEncoder();
 
-const has = (o, k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(o, k);
-export const isSupporter = (u) => !!u && (u.supporter_until || 0) > now();
-export const canTeach = (c, u) => STAFF.includes(u.role) || (isPro(u) && can(c, u, 'mentor'));
-export function needTeacher(c) {
-  const u = needActive(c);
-  if (STAFF.includes(u.role)) return u;
-  if (!can(c, u, 'mentor')) fail('Teaching unlocks at Proven VA rank. Raise your rank from your dashboard first.', 403);
-  if (!isPro(u)) fail('Earning from teaching is a Tier 2 · Circle Pro feature. Upgrade on the Circle Membership page.', 402);
-  return u;
+export class HttpError extends Error { constructor(message, status = 400) { super(message); this.status = status; } }
+export const fail = (msg, status = 400) => { throw new HttpError(msg, status); };
+export const json = (data, status = 200, headers = {}) =>
+  new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers } });
+
+export const now = () => Date.now();
+// SMS codes are used only when an SMS provider is configured (or locally, where codes go to the dev outbox).
+// Without one, sign-up skips the code step and identity is checked at the ID review instead.
+export const smsOn = (c) => !!c.env.SEMAPHORE_KEY || c.env.DEV_MODE === 'true';
+// Rate-limit bucket for an address: IPv4 as is, IPv6 by its /64 network (one cheap server can rotate through a whole /64)
+export function ipBucket(ip) {
+  ip = String(ip || '').trim().toLowerCase();
+  if (!ip.includes(':')) return ip;
+  if (ip.includes('.')) return ip.slice(ip.lastIndexOf(':') + 1); // IPv4-mapped IPv6
+  const [head, tail] = ip.split('::'); const h = head ? head.split(':') : [], t = tail ? tail.split(':') : [];
+  const full = ip.includes('::') ? [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill('0'), ...t] : ip.split(':');
+  return full.slice(0, 4).map((x) => x.replace(/^0+(?=.)/, '')).join(':') + '::/64';
 }
-const manilaDay = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
-const monthStart = () => { const d = new Date(Date.now() + 8 * 3600e3); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) - 8 * 3600e3; };
-const rageTiers = (c) => cfgJson(c, 'rage_tiers', []);
-// Replace (never delete) contact details, repeating until none remain, so removed text can't rejoin into a phone number.
-export function stripContacts(s) {
-  let out = String(s || ''); const re = new RegExp(OFF_PLATFORM.source, 'gi');
-  for (let i = 0; i < 5 && re.test(out); i++) { re.lastIndex = 0; out = out.replace(re, ' [hidden] '); }
-  return out.replace(/[ \t]{2,}/g, ' ').trim();
+export const uid = () => crypto.randomUUID();
+export const round2 = (n) => Math.round(n * 100) / 100;
+export const pj = (s, d) => { try { return s === null || s === undefined || s === '' ? d : typeof s === 'string' ? JSON.parse(s) : s; } catch { return d; } };
+export const clean = (s, max = 500) => String(s ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max);
+export const isEmail = (s) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s);
+
+// ── crypto ──
+export const bytesToB64 = (buf) => { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s); };
+export const b64ToBytes = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const hex = (buf) => [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
+export const randHex = (n = 32) => hex(crypto.getRandomValues(new Uint8Array(n)));
+export const sha256 = async (s) => hex(await crypto.subtle.digest('SHA-256', enc.encode(s)));
+export async function hmac(secret, msg) {
+  const k = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return hex(await crypto.subtle.sign('HMAC', k, enc.encode(msg)));
 }
-export const GIG_KINDS = { mentoring: '1:1 mentoring', upskill: 'Group upskilling', review: 'Resume & portfolio review', mock: 'Mock client interview', shadow: 'Shadowing session' };
-// SQL fragment: the mentor (alias m) may still teach: active, Tier 2 (or staff), and at least the mentor rank.
-const TEACHER_OK = `m.status = 'active' AND ((m.pro_until > ?1 AND m.va_rank >= ?2) OR m.role IN ('founder','gm','ea','admin_it','moderator'))`;
-const teacherArgs = (c) => [now(), cfgJson(c, 'rank_privileges', {}).mentor ?? 2];
-
-async function freeAllowance(c, u) {
-  const total = cfgNum(c, 'rage_free_daily') + (isSupporter(u) ? cfgNum(c, 'rage_supporter_bonus') : 0);
-  const used = (await c.db.first('SELECT used FROM rage_free WHERE user_id = ? AND day = ?', u.id, manilaDay()))?.used || 0;
-  return { total, used, left: Math.max(0, total - used) };
+export function safeEqual(a, b) {
+  a = String(a || ''); b = String(b || '');
+  if (!a || a.length !== b.length) return false;
+  let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
 }
-// Release held gig commissions so the daily payout can pay them.
-async function releaseCommission(c, bookingId) {
-  await c.db.run("UPDATE transactions_ledger SET status = 'unpaid' WHERE type = 'commission' AND ref_type = 'gig' AND ref_id = ? AND status = 'held'", bookingId);
+// PBKDF2-SHA256, 100k iterations (the Workers maximum)
+export async function hashPw(pw, salt = crypto.getRandomValues(new Uint8Array(16))) {
+  const k = await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 100000 }, k, 256);
+  return bytesToB64(salt) + '$' + bytesToB64(bits);
 }
-async function voidAndRefund(c, bk, why) {
-  await c.db.batch([
-    c.db.stmt("UPDATE transactions_ledger SET status = 'void' WHERE type = 'commission' AND ref_type = 'gig' AND ref_id = ? AND status IN ('held', 'unpaid')", bk.id),
-    c.db.insertStmt('platform_requests', { id: uid(), ts: now(), type: 'refund', user_id: bk.mentee_id, name: 'Gig refund', email: '', company: '', tier: 'gig', budget: String(bk.amount),
-      details: `Refund ₱${bk.amount} for booking ${bk.id} ("${bk.gig_title}"): ${why}`, status: 'new' }),
-  ]);
+export async function verifyPw(pw, stored) {
+  if (!stored || !stored.includes('$')) return false;
+  return safeEqual(await hashPw(pw, b64ToBytes(stored.split('$')[0])), stored);
 }
-const recomputeRating = (c, gigId) => c.db.run(`UPDATE mentor_gigs SET rating_sum = (SELECT IFNULL(SUM(rating), 0) FROM gig_bookings WHERE gig_id = ?1 AND rating IS NOT NULL),
-  rating_count = (SELECT COUNT(rating) FROM gig_bookings WHERE gig_id = ?1) WHERE id = ?1`, gigId);
 
-export const MEMBERSHIP_ROUTES = {
-  // ───────── Membership overview ─────────
-  async 'GET membership/status'(c) {
-    const u = need(c);
-    return {
-      tier: isPro(u) ? 2 : 1, pro: isPro(u), pro_until: u.pro_until || 0, supporter: isSupporter(u), supporter_until: u.supporter_until || 0, support_total: u.support_total || 0,
-      can_teach: canTeach(c, u), rank: u.va_rank || 0, rank_name: rankName(c, u.va_rank, u.account_type, u.role), staff: STAFF.includes(u.role),
-      prices: { pro: cfgNum(c, 'pro_price_php'), supporter_min: cfgNum(c, 'supporter_min_php'), supporter_days: cfgNum(c, 'supporter_days') },
-      gig_mentor_pct: cfgNum(c, 'gig_mentor_pct'), free_ai_sims_per_day: cfgNum(c, 'free_ai_sims_per_day'),
-      rage: { free_daily: cfgNum(c, 'rage_free_daily'), supporter_bonus: cfgNum(c, 'rage_supporter_bonus') },
-    };
-  },
+// ── cookies ──
+const COOKIE = 'vc_session';
+export const sessionCookie = (token) => `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${14 * 86400}`;
+export const clearCookie = () => `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+export const cookieToken = (req) => ((req.headers.get('cookie') || '').match(/(?:^|;\s*)vc_session=([a-f0-9]{64})/) || [])[1] || '';
 
-  // ───────── Keep the Circle Glowing ─────────
-  async 'POST support/contribute'(c) {
-    const u = need(c); await rate(c, 'support:' + u.id, 10, 3600);
-    const amount = Math.round(Number(c.body.amount) * 100) / 100;
-    const min = cfgNum(c, 'supporter_min_php');
-    if (!(amount >= min)) fail(`The smallest contribution is ₱${min}.`);
-    if (amount > 100000) fail('For contributions above ₱100,000 please contact the team.');
-    // Only verified members can leave a public note on the Glow Wall.
-    const message = u.status === 'active' ? stripContacts(clean(c.body.message, 140)) : '';
-    const intent = await c.db.insert('support_intents', { ts: now(), user_id: u.id, amount, anonymous: !!c.body.anonymous, message });
-    return checkout(c, { ref_type: 'support', ref_id: intent.id, amount, description: 'Keep the Circle Glowing ✨ contribution', back: '/pro.html?for=support' });
-  },
-  async 'GET support/wall'(c) {
-    const since = monthStart();
-    const month = await c.db.first('SELECT COUNT(DISTINCT user_id) people, IFNULL(SUM(amount), 0) total FROM supporters WHERE ts >= ?', since);
-    const recent = await c.db.all(`SELECT s.id, s.display, CASE WHEN u.status IN ('banned','suspended') THEN '' ELSE s.message END AS message, s.ts
-      FROM supporters s JOIN users u ON u.id = s.user_id WHERE s.ts >= ? AND s.hidden = 0 ORDER BY s.ts DESC LIMIT 80`, since);
-    // Day precision only, so anonymous entries can't be matched to a moment.
-    return { goal: cfgNum(c, 'glow_goal_php') || 5000, month: { people: month.people, total: round2(month.total) },
-      recent: recent.map((r) => ({ id: r.id, display: r.display, message: r.message, day: new Date(r.ts + 8 * 3600e3).toISOString().slice(0, 10) })),
-      uses: 'Contributions pay for SMS sign-up codes, AI practice, moderation and new free courses.' };
-  },
-  async 'POST admin/support/hide'(c) {
-    need(c, STAFF);
-    const r = await c.db.run('UPDATE supporters SET hidden = 1 WHERE id = ?', clean(c.body.id, 60));
-    if (!r.meta.changes) fail('Not found', 404);
-    await audit(c, 'glow_wall_hide', c.body.id, '');
-    return { ok: true };
-  },
+// ── D1 ──
+const val = (v) => (v === undefined ? null : typeof v === 'boolean' ? (v ? 1 : 0) : v !== null && typeof v === 'object' ? JSON.stringify(v) : v);
+export function makeDb(D1) {
+  const stmt = (sql, ...b) => D1.prepare(sql).bind(...b.map(val));
+  return {
+    stmt,
+    first: (sql, ...b) => stmt(sql, ...b).first(),
+    all: async (sql, ...b) => (await stmt(sql, ...b).all()).results,
+    run: (sql, ...b) => stmt(sql, ...b).run(),
+    batch: (list) => D1.batch(list),
+    insertStmt(table, obj) {
+      const keys = Object.keys(obj).filter((k) => obj[k] !== undefined);
+      return stmt(`INSERT INTO ${table} (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`, ...keys.map((k) => obj[k]));
+    },
+    async insert(table, obj) {
+      if (!('id' in obj) && !['config', 'sessions', 'otps', 'rate_limits'].includes(table)) obj.id = uid();
+      await this.insertStmt(table, obj).run();
+      return obj;
+    },
+    updateStmt(table, id, patch, key = 'id') {
+      const keys = Object.keys(patch).filter((k) => patch[k] !== undefined);
+      return stmt(`UPDATE ${table} SET ${keys.map((k) => k + '=?').join(',')} WHERE ${key}=?`, ...keys.map((k) => patch[k]), id);
+    },
+    update(table, id, patch, key = 'id') { return this.updateStmt(table, id, patch, key).run(); },
+  };
+}
 
-  // ───────── Circle Rage Room tiers ─────────
-  // Throws are only deducted when they are actually thrown (POST rage/spend, batched by the browser), so nothing is lost on refresh or tier switch.
-  async 'GET rage/status'(c) {
-    const u = need(c);
-    const owned = Object.fromEntries((await c.db.all('SELECT tier, throws FROM rage_wallet WHERE user_id = ?', u.id)).map((r) => [r.tier, r.throws]));
-    const free = await freeAllowance(c, u);
-    return { tiers: rageTiers(c).map((t) => ({ ...t, owned: t.price ? owned[t.id] || 0 : free.left })), free, supporter: isSupporter(u) };
-  },
-  async 'POST rage/buy'(c) {
-    const u = need(c); await rate(c, 'ragebuy:' + u.id, 10, 3600);
-    const t = rageTiers(c).find((x) => x.id === c.body.tier && x.price > 0) || fail('Pick a pack.');
-    // Snapshot what is being bought, so later Settings changes can't alter a paid purchase.
-    const p = await c.db.insert('rage_purchases', { ts: now(), user_id: u.id, tier: t.id, throws: t.throws, price: t.price, credited: 0 });
-    return checkout(c, { ref_type: 'rage', ref_id: p.id, amount: t.price, description: `Circle Rage Room ${t.name} pack (${t.throws} throws)`, back: '/rage.html?tier=' + t.id });
-  },
-  async 'POST rage/spend'(c) {
-    const u = need(c); await rate(c, 'ragespend:' + u.id, 600, 3600);
-    const t = rageTiers(c).find((x) => x.id === c.body.tier) || fail('Unknown tier');
-    const want = Math.max(0, Math.min(50, Math.round(Number(c.body.count) || 0)));
-    if (!want) return { spent: 0 };
-    for (let tries = 0; tries < 4; tries++) {
-      if (!t.price) {
-        const total = cfgNum(c, 'rage_free_daily') + (isSupporter(u) ? cfgNum(c, 'rage_supporter_bonus') : 0);
-        const row = await c.db.first('SELECT used FROM rage_free WHERE user_id = ? AND day = ?', u.id, manilaDay());
-        const used = row ? row.used : 0; const n = Math.min(want, total - used);
-        if (n <= 0) return { spent: 0, left: 0 };
-        const r = row ? await c.db.run('UPDATE rage_free SET used = used + ? WHERE user_id = ? AND day = ? AND used = ?', n, u.id, manilaDay(), used)
-          : await c.db.run('INSERT OR IGNORE INTO rage_free (user_id, day, used) VALUES (?, ?, ?)', u.id, manilaDay(), n);
-        if (r.meta.changes) return { spent: n, left: total - used - n };
-      } else {
-        const have = (await c.db.first('SELECT throws FROM rage_wallet WHERE user_id = ? AND tier = ?', u.id, t.id))?.throws || 0;
-        const n = Math.min(want, have);
-        if (n <= 0) return { spent: 0, left: 0 };
-        const r = await c.db.run('UPDATE rage_wallet SET throws = throws - ? WHERE user_id = ? AND tier = ? AND throws = ?', n, u.id, t.id, have);
-        if (r.meta.changes) return { spent: n, left: have - n };
-      }
-    }
-    fail('Busy, try again.', 409);
-  },
+// ── config (small table, loaded once per request) ──
+export async function loadConfig(db) {
+  const rows = await db.all('SELECT key, value FROM config');
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+}
+export const cfgNum = (c, k) => Number(c.cfg[k]) || 0;
+export const cfgJson = (c, k, d) => pj(c.cfg[k], d);
 
-  // ───────── Tier 2 teaching gigs ─────────
-  // Money flow: the mentee pays at booking; the mentor's commission is HELD until the mentee confirms the session,
-  // or gig_release_days after it (no dispute). Cancellations and upheld disputes void the commission and queue a refund for Finance.
-  async 'GET gigs/list'(c) {
-    const u = needActive(c); const kind = has(GIG_KINDS, c.query.kind) ? c.query.kind : ''; const q = clean(c.query.q, 60);
-    const rows = await c.db.all(`SELECT g.*, m.name, m.va_rank, m.account_type, m.role, m.hub, m.headline, m.years_experience FROM mentor_gigs g JOIN users m ON m.id = g.mentor_id
-      WHERE g.active = 1 AND ${TEACHER_OK} AND (?3 = '' OR g.kind = ?3)
-        AND (?4 = '' OR instr(lower(g.title || ' ' || g.description || ' ' || m.name), lower(?4)) > 0)
-      ORDER BY (g.rating_count > 0) DESC, (g.rating_sum * 1.0 / MAX(g.rating_count, 1)) DESC, g.bookings DESC, g.created_at DESC LIMIT 100`, ...teacherArgs(c), kind, q);
-    return { kinds: GIG_KINDS, cancel_hours: cfgNum(c, 'gig_cancel_hours'), gigs: rows.map((g) => ({ id: g.id, title: g.title, kind: g.kind, kind_label: GIG_KINDS[g.kind], description: g.description, price: g.price, duration_min: g.duration_min,
-      bookings: g.bookings, rating: g.rating_count ? Math.round(10 * g.rating_sum / g.rating_count) / 10 : null, ratings: g.rating_count, mine: g.mentor_id === u.id,
-      mentor: { id: g.mentor_id, name: g.name, rank_name: rankName(c, g.va_rank, g.account_type, g.role), hub: g.hub, headline: g.headline, years: g.years_experience } })) };
-  },
-  async 'GET gigs/mine'(c) {
-    const u = needActive(c);
-    const gigs = await c.db.all('SELECT * FROM mentor_gigs WHERE mentor_id = ? ORDER BY created_at DESC', u.id);
-    const sel = `b.*, m.name AS mentor_name, e.name AS mentee_name`;
-    const teaching = await c.db.all(`SELECT ${sel} FROM gig_bookings b JOIN users m ON m.id = b.mentor_id JOIN users e ON e.id = b.mentee_id
-      WHERE b.mentor_id = ? AND b.paid = 1 ORDER BY b.scheduled_at DESC LIMIT 100`, u.id);
-    const learning = await c.db.all(`SELECT ${sel} FROM gig_bookings b JOIN users m ON m.id = b.mentor_id JOIN users e ON e.id = b.mentee_id
-      WHERE b.mentee_id = ? AND b.paid = 1 ORDER BY b.scheduled_at DESC LIMIT 100`, u.id);
-    const earn = await c.db.first(`SELECT SUM(CASE WHEN status = 'unpaid' THEN net ELSE 0 END) unpaid, SUM(CASE WHEN status = 'paid_out' THEN net ELSE 0 END) paid,
-      SUM(CASE WHEN status = 'held' THEN net ELSE 0 END) held FROM transactions_ledger WHERE payee_id = ? AND type = 'commission' AND ref_type IN ('gig', 'module')`, u.id);
-    const hrs = cfgNum(c, 'gig_cancel_hours'), rel = cfgNum(c, 'gig_release_days');
-    const b = (x) => ({ id: x.id, title: x.gig_title, kind_label: GIG_KINDS[x.gig_kind] || x.gig_kind, when: x.scheduled_at, duration_min: x.duration_min, status: x.status, amount: x.amount, note: x.note,
-      rating: x.rating, review: x.review, room: 'https://meet.jit.si/' + x.room, mentor: { id: x.mentor_id, name: x.mentor_name }, mentee: { id: x.mentee_id, name: x.mentee_name },
-      can_cancel_mentee: x.status === 'confirmed' && x.scheduled_at - now() >= hrs * 3600e3, can_cancel_mentor: x.status === 'confirmed' && x.scheduled_at > now(),
-      can_rate: x.status === 'confirmed' && x.scheduled_at <= now(), can_dispute: x.status === 'confirmed' && x.scheduled_at <= now() && now() - x.scheduled_at < rel * 864e5 });
-    return { can_teach: canTeach(c, u), pro: isPro(u), rank_ok: can(c, u, 'mentor'), mentor_pct: cfgNum(c, 'gig_mentor_pct'), min_price: cfgNum(c, 'gig_min_price_php'), kinds: GIG_KINDS,
-      cancel_hours: hrs, release_days: rel,
-      gigs: gigs.map((g) => ({ id: g.id, title: g.title, kind: g.kind, description: g.description, price: g.price, duration_min: g.duration_min, active: !!g.active, bookings: g.bookings,
-        rating: g.rating_count ? Math.round(10 * g.rating_sum / g.rating_count) / 10 : null })),
-      teaching: teaching.map(b), learning: learning.map(b), earnings: { unpaid: round2(earn.unpaid || 0), paid: round2(earn.paid || 0), held: round2(earn.held || 0) } };
-  },
-  async 'POST gigs/save'(c) {
-    const b = c.body;
-    if (b.id && b.active === false && Object.keys(b).every((k) => ['id', 'active'].includes(k))) { // pausing is always allowed, even after Tier 2 lapses
-      const u = needActive(c);
-      const r = await c.db.run('UPDATE mentor_gigs SET active = 0 WHERE id = ? AND mentor_id = ?', b.id, u.id);
-      if (!r.meta.changes) fail('Not your gig.', 403); return { id: b.id };
-    }
-    const u = needTeacher(c); await rate(c, 'gigsave:' + u.id, 30, 3600);
-    const title = stripContacts(clean(b.title, 120)); if (title.length < 5) fail('Give your gig a clear title.');
-    const kind = has(GIG_KINDS, b.kind) ? b.kind : fail('Pick a gig type.');
-    const price = Math.round(Number(b.price)); const min = cfgNum(c, 'gig_min_price_php');
-    if (!(price >= min && price <= 50000)) fail(`Price must be between ₱${min} and ₱50,000.`);
-    const duration = Math.round(Number(b.duration_min)); if (!(duration >= 15 && duration <= 480)) fail('Duration must be 15–480 minutes.');
-    const row = { title, kind, description: stripContacts(clean(b.description, 1500)), price, duration_min: duration, active: b.active !== false };
-    const scan = heuristicScan(`${title} ${row.description}`);
-    if (scan.rating === 'danger') fail('This gig matches scam patterns (' + scan.flags.join(', ') + '). Mentors may not ask for extra fees, crypto, or off-platform contact.');
-    if (b.id) {
-      const r = await c.db.run('UPDATE mentor_gigs SET title=?, kind=?, description=?, price=?, duration_min=?, active=? WHERE id = ? AND mentor_id = ?',
-        row.title, row.kind, row.description, row.price, row.duration_min, row.active ? 1 : 0, b.id, u.id);
-      if (!r.meta.changes) fail('Not your gig.', 403);
-      return { id: b.id };
-    }
-    const g = await c.db.insert('mentor_gigs', { ...row, mentor_id: u.id, created_at: now(), bookings: 0, rating_sum: 0, rating_count: 0 });
-    await c.db.run(`UPDATE users SET badges = json_insert(badges, '$[#]', 'Mentor') WHERE id = ? AND instr(badges, '"Mentor"') = 0`, u.id);
-    return { id: g.id };
-  },
-  async 'POST gigs/book'(c) {
-    const u = needActive(c); await rate(c, 'gigbook:' + u.id, 20, 3600);
-    const g = await c.db.first(`SELECT g.*, m.name AS mentor_name FROM mentor_gigs g JOIN users m ON m.id = g.mentor_id WHERE g.id = ?3 AND g.active = 1 AND ${TEACHER_OK}`,
-      ...teacherArgs(c), c.body.gig_id) || fail('That gig is not available.', 404);
-    if (g.mentor_id === u.id) fail("You can't book your own gig.");
-    const when = Date.parse(c.body.scheduled_at) || fail('Pick a date and time.');
-    if (when < now() + 2 * 3600e3) fail('Book at least 2 hours ahead so your mentor can prepare.');
-    if (when > now() + 90 * 864e5) fail('Book within the next 90 days.');
-    const end = when + g.duration_min * 60000;
-    // The mentor can't be double-booked (paid bookings, or unpaid ones still within their 30-minute checkout window).
-    const clash = await c.db.first(`SELECT 1 FROM gig_bookings WHERE mentor_id = ? AND status IN ('confirmed', 'pending_payment') AND (paid = 1 OR ts > ?)
-      AND scheduled_at < ? AND scheduled_at + duration_min * 60000 > ?`, g.mentor_id, now() - 30 * 60000, end, when);
-    if (clash) fail('Your mentor already has a session at that time. Please pick another slot.', 409);
-    const bk = await c.db.insert('gig_bookings', { ts: now(), gig_id: g.id, mentor_id: g.mentor_id, mentee_id: u.id, scheduled_at: when, note: stripContacts(clean(c.body.note, 600)),
-      status: 'pending_payment', amount: g.price, paid: 0, room: 'tvc-gig-' + randHex(10), gig_title: g.title, gig_kind: g.kind, duration_min: g.duration_min });
-    return checkout(c, { ref_type: 'gig', ref_id: bk.id, amount: g.price, description: `${GIG_KINDS[g.kind]} with ${g.mentor_name}: ${g.title}`, back: '/mentor.html?for=learning' });
-  },
-  async 'POST gigs/complete'(c) { // mentee confirms the session happened and rates it; this releases the mentor's commission
-    const u = needActive(c);
-    const bk = await c.db.first("SELECT * FROM gig_bookings WHERE id = ? AND mentee_id = ? AND paid = 1 AND status = 'confirmed'", c.body.booking_id, u.id) || fail('Booking not found or already rated.', 404);
-    if (bk.scheduled_at > now()) fail('You can rate the session after it starts.');
-    if (!Number(c.body.rating)) fail('Choose 1–5 stars.');
-    const rating = Math.max(1, Math.min(5, Math.round(Number(c.body.rating))));
-    const r = await c.db.run("UPDATE gig_bookings SET status = 'completed', rating = ?, review = ? WHERE id = ? AND status = 'confirmed'", rating, stripContacts(clean(c.body.review, 600)), bk.id);
-    if (!r.meta.changes) fail('Already rated.', 409);
-    await recomputeRating(c, bk.gig_id);
-    await releaseCommission(c, bk.id);
-    await notify(c, bk.mentor_id, 'gig', `${u.name} rated your session ${'★'.repeat(rating)}. Your earnings are released for the next payout.`, '/mentor.html#teaching');
-    return { ok: true };
-  },
-  async 'POST gigs/cancel'(c) {
-    const u = needActive(c);
-    const bk = await c.db.first("SELECT * FROM gig_bookings WHERE id = ? AND paid = 1 AND status = 'confirmed' AND (mentee_id = ? OR mentor_id = ?)", c.body.booking_id, u.id, u.id) || fail('Booking not found.', 404);
-    const byMentor = bk.mentor_id === u.id;
-    if (bk.scheduled_at <= now()) fail('This session has already started. Use "Report a problem" instead.');
-    if (!byMentor && bk.scheduled_at - now() < cfgNum(c, 'gig_cancel_hours') * 3600e3) fail(`Mentees can cancel for a refund up to ${cfgNum(c, 'gig_cancel_hours')} hours before the session. Message your mentor to reschedule.`);
-    const r = await c.db.run("UPDATE gig_bookings SET status = 'cancelled', cancelled_by = ? WHERE id = ? AND status = 'confirmed'", byMentor ? 'mentor' : 'mentee', bk.id);
-    if (!r.meta.changes) fail('Already changed.', 409);
-    await voidAndRefund(c, bk, `cancelled by the ${byMentor ? 'mentor' : 'mentee'}`);
-    await notify(c, byMentor ? bk.mentee_id : bk.mentor_id, 'gig', `"${bk.gig_title}" was cancelled by the ${byMentor ? 'mentor' : 'mentee'}.${byMentor ? ' You will be refunded in full.' : ''}`, byMentor ? '/mentor.html?for=learning' : '/mentor.html#teaching');
-    return { ok: true, refund: true };
-  },
-  async 'POST gigs/dispute'(c) { // mentee: no-show or serious problem; commission stays held until Ops decides
-    const u = needActive(c);
-    const bk = await c.db.first("SELECT * FROM gig_bookings WHERE id = ? AND mentee_id = ? AND paid = 1 AND status = 'confirmed'", c.body.booking_id, u.id) || fail('Booking not found.', 404);
-    if (bk.scheduled_at > now()) fail('You can report a problem once the session time has started.');
-    if (now() - bk.scheduled_at > cfgNum(c, 'gig_release_days') * 864e5) fail('Problems must be reported within ' + cfgNum(c, 'gig_release_days') + ' days of the session.');
-    const reason = clean(c.body.reason, 400) || 'No reason given';
-    await c.db.run("UPDATE gig_bookings SET status = 'disputed', dispute = ? WHERE id = ? AND status = 'confirmed'", reason, bk.id);
-    await c.db.insert('escalation_logs', { ts: now(), user_id: bk.mentor_id, rule: 'gig_dispute', severity: 'medium', points: 0, action: 'review',
-      detail: `Booking ${bk.id} ("${bk.gig_title}", ₱${bk.amount}) disputed by ${u.name}: ${reason}`, status: 'open' });
-    await notify(c, bk.mentor_id, 'gig', `${u.name} reported a problem with "${bk.gig_title}". The Circle team will review it.`, '/mentor.html#teaching');
-    return { ok: true };
-  },
-  async 'GET admin/gigs/disputes'(c) {
-    need(c, [...STAFF, ...FINANCE]);
-    return { disputes: await c.db.all(`SELECT b.id, b.gig_title, b.amount, b.scheduled_at, b.dispute, m.name AS mentor, e.name AS mentee FROM gig_bookings b
-      JOIN users m ON m.id = b.mentor_id JOIN users e ON e.id = b.mentee_id WHERE b.status = 'disputed' ORDER BY b.scheduled_at`) };
-  },
-  async 'POST admin/gigs/resolve'(c) { // outcome: 'release' (pay the mentor) or 'refund' (refund the mentee)
-    need(c, [...STAFF, ...FINANCE]);
-    const bk = await c.db.first("SELECT * FROM gig_bookings WHERE id = ? AND status = 'disputed'", c.body.booking_id) || fail('Disputed booking not found.', 404);
-    if (c.body.outcome === 'release') { await c.db.update('gig_bookings', bk.id, { status: 'completed' }); await releaseCommission(c, bk.id); }
-    else if (c.body.outcome === 'refund') { await c.db.update('gig_bookings', bk.id, { status: 'refunded' }); await voidAndRefund(c, bk, 'dispute upheld: ' + (bk.dispute || '')); }
-    else fail('Choose release or refund.');
-    await audit(c, 'gig_dispute_' + c.body.outcome, bk.id, bk.dispute);
-    await notify(c, bk.mentee_id, 'gig', c.body.outcome === 'refund' ? `Your problem report for "${bk.gig_title}" was upheld. You will be refunded.` : `Your problem report for "${bk.gig_title}" was reviewed and closed.`, '/mentor.html?for=learning');
-    await notify(c, bk.mentor_id, 'gig', c.body.outcome === 'release' ? `The report on "${bk.gig_title}" was closed. Your earnings are released.` : `The report on "${bk.gig_title}" was upheld; the mentee is refunded.`, '/mentor.html#teaching');
-    return { ok: true };
-  },
-};
+// ── fixed-window rate limit stored in D1 ──
+export async function rate(c, key, max, sec = 60) {
+  const t = now();
+  const r = await c.db.first(
+    `INSERT INTO rate_limits (key, count, reset_at) VALUES (?, 1, ?)
+     ON CONFLICT(key) DO UPDATE SET count = CASE WHEN reset_at < ? THEN 1 ELSE count + 1 END,
+       reset_at = CASE WHEN reset_at < ? THEN excluded.reset_at ELSE reset_at END RETURNING count`, key, t + sec * 1000, t, t);
+  if (r && r.count > max) fail('Too many requests. Please wait a moment.', 429);
+}
 
-// ───────── Founding Ambassadors ─────────
-// Real VAs who help grow the circle during launch: free Tier 2 for ambassador_days, a badge, a playbook and a referral leaderboard.
-MEMBERSHIP_ROUTES['GET ambassadors/board'] = async (c) => {
-  const u = needActive(c);
-  const mine = await c.db.first(`SELECT COUNT(*) total, SUM(status = 'active') active FROM users WHERE referred_by = ? AND referred_by <> ''`, u.referral_code);
-  const app = await c.db.first("SELECT status, ts FROM creator_applications WHERE user_id = ? AND kind = 'ambassador' ORDER BY ts DESC LIMIT 1", u.id);
-  const board = await c.db.all(`SELECT a.id, a.name, a.hub, (SELECT COUNT(*) FROM users r WHERE r.referred_by = a.referral_code AND r.status = 'active') active
-    FROM users a WHERE a.ambassador_until > ? AND a.status = 'active' AND a.account_type = 'va' ORDER BY active DESC, a.name LIMIT 10`, now());
-  const count = (await c.db.first("SELECT COUNT(*) n FROM users WHERE ambassador_until > ? AND status = 'active' AND account_type = 'va'", now())).n;
-  return { ambassador: (u.ambassador_until || 0) > now(), until: u.ambassador_until || 0, eligible: u.account_type === 'va', application: app || null,
-    referral_code: u.referral_code, referrals: { total: mine.total || 0, active: mine.active || 0 },
-    leaderboard: board, spots_left: Math.max(0, cfgNum(c, 'ambassador_cap') - count), days: cfgNum(c, 'ambassador_days') };
-};
-
-// Called by the daily payout before paying: releases held gig commissions whose session is long enough past without a dispute.
-export async function autoReleaseGigs(c) {
-  const cutoff = now() - (cfgNum(c, 'gig_release_days') || 3) * 864e5;
-  const due = await c.db.all("SELECT id FROM gig_bookings WHERE status = 'confirmed' AND paid = 1 AND scheduled_at < ?", cutoff);
-  for (const b of due) {
-    const r = await c.db.run("UPDATE gig_bookings SET status = 'completed' WHERE id = ? AND status = 'confirmed'", b.id);
-    if (r.meta.changes) await releaseCommission(c, b.id);
-  }
-  return due.length;
+export async function audit(c, action, target, detail) {
+  await c.db.insert('audit', { ts: now(), actor: c.user ? c.user.id : 'system', action, target: target || '', detail: clean(detail, 500) });
 }

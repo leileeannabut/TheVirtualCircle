@@ -1,4 +1,0 @@
-// Cloudflare Pages Function: every /api/* request (API, payment webhooks) goes to the app in src/.
-import { handleApi } from '../../src/api.js';
-
-export const onRequest = (ctx) => handleApi(ctx.request, ctx.env, ctx);

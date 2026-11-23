@@ -1,5 +1,5 @@
 // All API routes. Each handler gets c = { env, db, cfg, user, ip, ua, body, query, token } and returns JSON data (or a Response).
-import { fail, now, uid, round2, pj, clean, isEmail, sha256, hmac, safeEqual, cfgNum, cfgJson, rate, audit, randHex, hashPw, verifyPw } from './lib.js';
+import { fail, now, uid, round2, pj, clean, isEmail, sha256, hmac, safeEqual, cfgNum, cfgJson, rate, audit, randHex, hashPw, verifyPw, smsOn, ipBucket } from './lib.js';
 import { OFF_PLATFORM, penalize, screenText, scanText, gemini, sendSms } from './services.js';
 import { checkout, processPayment, runPayouts } from './payments.js';
 import { ingest } from './ingest.js';
@@ -91,13 +91,13 @@ export const ROUTES = {
       hubs: await c.db.all('SELECT id, name, region, kind FROM channels ORDER BY sort'),
       crisis_resources: cfgJson(c, 'crisis_resources', []), studio_tiers: cfgJson(c, 'studio_tiers', []), squad_tiers: cfgJson(c, 'squad_tiers', []),
       unlock_fee_php: cfgNum(c, 'unlock_fee_php'), job_post_fee_php: cfgNum(c, 'job_post_fee_php'), boost_fee_php: cfgNum(c, 'boost_fee_php'), pro_price_php: cfgNum(c, 'pro_price_php'), comedy_rules: c.cfg.comedy_rules || '', supporter_min_php: cfgNum(c, 'supporter_min_php'), consult_platform_pct: cfgNum(c, 'consult_platform_pct'),
-      mentor_split_min: cfgNum(c, 'mentor_split_min'), mentor_split_max: cfgNum(c, 'mentor_split_max'), ai: !!c.env.GEMINI_API_KEY,
+      mentor_split_min: cfgNum(c, 'mentor_split_min'), mentor_split_max: cfgNum(c, 'mentor_split_max'), ai: !!c.env.GEMINI_API_KEY, sms: smsOn(c),
     };
   },
 
   // ───────── Auth ─────────
   async 'POST auth/register'(c) {
-    await rate(c, 'reg:' + c.ip, 5, 600);
+    await rate(c, 'reg:' + ipBucket(c.ip), 5, 600);
     const b = c.body;
     const email = clean(b.email, 120).toLowerCase(), name = clean(b.name, 60);
     if (/circle\s*host|\(\s*ai\s*\)|🤖/i.test(name)) fail('Please use your real name. "Circle Host" and "(AI)" are reserved for the labeled AI hosts.');
@@ -117,19 +117,19 @@ export const ROUTES = {
     const referrer = ref ? await c.db.first("SELECT 1 FROM users WHERE referral_code = ? AND account_type <> 'host'", ref) : null;
     const fp = b.fingerprint ? await sha256(String(b.fingerprint)) : '';
     const u = { id: uid(), email, name, mobile, mobile_verified: 0, pw_hash: await hashPw(b.password), role: type, account_type: type, tier,
-      status: 'pending_otp', region: clean(b.region, 20), hub: clean(b.hub, 40), badges: '[]', risk_points: 0, muted_until: 0,
+      status: smsOn(c) ? 'pending_otp' : 'pending_kyc', region: clean(b.region, 20), hub: clean(b.hub, 40), badges: '[]', risk_points: 0, muted_until: 0,
       referral_code: randHex(3).toUpperCase(), referred_by: referrer ? ref : '', fingerprint: fp, consent_at: now(), created_at: now() };
     try { await c.db.insert('users', u); } catch (e) { if (/UNIQUE/.test(e.message)) fail('That email or mobile is already registered.', 409); throw e; }
     if (fp) {
       const dup = await c.db.first('SELECT COUNT(*) n FROM users WHERE fingerprint = ? AND id <> ?', fp, u.id);
       if (dup.n) await penalize(c, u, 'dup_fingerprint', `${dup.n} other account(s) share this device`, 'high');
     }
-    await sendOtp(c, u);
+    if (smsOn(c)) await sendOtp(c, u);
     c.user = u; await audit(c, 'register', u.id, `${type} ${tier}`);
-    return { ok: true, next: 'otp', _session: u.id };
+    return { ok: true, next: smsOn(c) ? 'otp' : 'kyc', _session: u.id };
   },
   async 'POST auth/login'(c) {
-    await rate(c, 'login:' + c.ip, 10, 300);
+    await rate(c, 'login:' + ipBucket(c.ip), 10, 300);
     const u = await c.db.first('SELECT id, pw_hash, status FROM users WHERE email = ?', clean(c.body.email, 120).toLowerCase());
     // Verify even when the email is unknown so timing does not reveal registered emails
     const ok = await verifyPw(String(c.body.password || ''), u ? u.pw_hash : 'AAAAAAAAAAAAAAAAAAAAAA==$x');
@@ -143,6 +143,7 @@ export const ROUTES = {
   },
   async 'GET me'(c) {
     if (!c.user) return { user: null };
+    if (c.user.status === 'pending_otp' && !smsOn(c)) { await c.db.run("UPDATE users SET status = 'pending_kyc' WHERE id = ? AND status = 'pending_otp'", c.user.id); c.user.status = 'pending_kyc'; }
     const [k, m, p] = await Promise.all([
       c.db.first('SELECT status, note FROM kyc WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', c.user.id),
       c.db.first('SELECT 1 FROM mentors WHERE user_id = ?', c.user.id),
@@ -151,6 +152,7 @@ export const ROUTES = {
   },
   async 'POST otp/send'(c) {
     const u = need(c); if (u.mobile_verified) return { ok: true };
+    if (!smsOn(c)) return { ok: true, next: 'kyc' }; // SMS is off: nothing to send
     await rate(c, 'otp:' + u.id, 3, 300); await sendOtp(c, u); return { ok: true };
   },
   async 'POST otp/verify'(c) {
@@ -178,10 +180,14 @@ export const ROUTES = {
   async 'POST kyc/submit'(c) {
     const u = need(c); const b = c.body;
     const upgrade = b.kind === 'upgrade';
-    if (!u.mobile_verified) fail('Verify your mobile number first.');
+    if (smsOn(c) && u.status === 'pending_otp' && !u.mobile_verified) fail('Verify your mobile number first.');
     if (upgrade ? u.status !== 'active' : ['kyc_review', 'active'].includes(u.status)) fail(upgrade ? 'Finish your first verification before requesting a higher rank.' : 'Your verification is already submitted.', 409);
     if (upgrade && (await c.db.first("SELECT 1 FROM kyc WHERE user_id = ? AND status = 'pending'", u.id))) fail('You already have a request under review.', 409);
     if (storageMode(c) === 'none') fail('ID uploads open soon: our team is finishing setup. Please try again later.', 503);
+    if (!u.mobile_verified && !upgrade) { // no SMS check behind this account: cap uploads so scripts can't fill the Founder's Drive
+      await rate(c, 'kyc-net:' + ipBucket(c.ip), 3, 86400);
+      await rate(c, 'kyc-unverified', cfgNum(c, 'kyc_unverified_daily') || 100, 86400);
+    }
     await rate(c, 'kyc:' + u.id, 3, 3600);
     const checkFile = (f, types, label) => {
       if (!f || typeof f === 'string') fail(`Upload ${label}.`);
@@ -567,8 +573,8 @@ export const ROUTES = {
   },
   async 'GET admin/kyc'(c) {
     need(c, STAFF);
-    const rows = await c.db.all(`SELECT k.*, u.name, u.email, u.mobile, u.tier, u.account_type, u.risk_points, u.va_rank FROM kyc k JOIN users u ON u.id = k.user_id WHERE k.status = 'pending' ORDER BY k.created_at`);
-    return { rank_names: cfgJson(c, 'rank_names', {}), queue: rows.map((k) => ({ id: k.id, user_id: k.user_id, name: k.name, email: k.email, mobile: k.mobile, tier: k.tier, account_type: k.account_type,
+    const rows = await c.db.all(`SELECT k.*, u.name, u.email, u.mobile, u.mobile_verified, u.tier, u.account_type, u.risk_points, u.va_rank FROM kyc k JOIN users u ON u.id = k.user_id WHERE k.status = 'pending' ORDER BY k.created_at`);
+    return { rank_names: cfgJson(c, 'rank_names', {}), queue: rows.map((k) => ({ id: k.id, user_id: k.user_id, name: k.name, email: k.email, mobile: k.mobile, mobile_verified: !!k.mobile_verified, tier: k.tier, account_type: k.account_type,
       kind: k.kind, id_type: k.id_type, has_id: !!k.id_file, proofs: pj(k.proof_files, []).length, experience: pj(k.experience, {}), current_rank: k.va_rank,
       suggested_rank: k.kind === 'upgrade' ? Math.min(3, (k.va_rank || 0) + 1) : k.kind === 'tenured' ? 2 : 1, flags: pj(k.flags, []), risk_points: k.risk_points, created_at: k.created_at })) };
   },

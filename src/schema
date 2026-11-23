@@ -1,6 +1,6 @@
 // Database schema, applied automatically on first request (Pages has no migration step).
 // Bump SCHEMA_VERSION and append to MIGRATIONS for future changes.
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 export const MIGRATIONS = {
   1: [
       "CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '')",
@@ -143,5 +143,8 @@ export const MIGRATIONS = {
     "UPDATE users SET referred_by = '' WHERE referred_by IN (SELECT referral_code FROM users WHERE account_type = 'host')",
     "UPDATE messages SET name = replace(name, ' · Circle Host (AI)', '') WHERE user_id IN (SELECT id FROM users WHERE account_type = 'host')",
     "UPDATE host_calendar SET status = 'missed' WHERE status = 'posting'",
+  ],
+  7: [ // first-run setup: a daily cap on ID uploads from accounts without an SMS-verified mobile
+    "INSERT INTO config (key, value, note) VALUES ('kyc_unverified_daily', '100', 'Most ID submissions per day, site-wide, from members without an SMS-verified mobile (only matters while SMS codes are off)')",
   ],
 };

@@ -1,55 +1,82 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0a1024"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/css/tokens.css">
-<title>Circle Profile — The Virtual Circle</title></head><body>
+<title>Circle Membership — The Virtual Circle</title>
+<style>
+  .tier{display:flex;flex-direction:column}.tier .list{flex:1}
+  .amounts{display:flex;gap:.4rem;flex-wrap:wrap;margin:.8rem 0}.amounts button{min-width:72px}
+  .glow-meter{height:14px;border-radius:99px;background:var(--bg-2);border:1px solid var(--line);overflow:hidden}
+  .glow-meter i{display:block;height:100%;background:linear-gradient(90deg,#c98a2b,#ffd78a,#fff1c9);box-shadow:0 0 18px rgba(242,182,74,.7)}
+  .glow-wall{display:flex;flex-wrap:wrap;gap:.5rem}.glow-wall>span{padding:.35rem .8rem;border-radius:99px;background:rgba(242,182,74,.08);border:1px solid rgba(242,182,74,.3);font-size:.88rem}
+</style></head><body>
 <main class="wrap page">
-  <section class="card glow" id="head" style="margin-bottom:2rem"></section>
-  <div class="split">
-    <div class="stack"><h2 style="font-size:1.5rem">Posts</h2><div id="posts" class="stack"></div></div>
-    <aside class="stack"><div class="card" id="about"></div><div class="card" id="certs"></div></aside>
+  <section class="hero" style="padding-top:2rem"><div class="eyebrow">Circle Membership</div><h1>Free to belong. Choose how you glow.</h1>
+    <p class="lead">Every VA belongs here for free. Support the circle when you can, and go Tier 2 when you're ready to earn by teaching and unlock every training material.</p></section>
+
+  <div class="grid g3" style="align-items:stretch">
+    <div class="card tier"><div class="eyebrow">Tier 1 · Circle Member</div><div class="price">Free</div><p class="muted small">Forever, for every verified VA.</p>
+      <ul class="list"><li>Feed, hubs, messages, connections<span>✓</span></li><li>Circle BFF matching<span>✓</span></li><li>Free courses + certificates<span>✓</span></li>
+        <li>Circle Academy simulators<span>✓</span></li><li>Apply to client jobs<span>✓</span></li><li>Book teaching gigs from mentors<span>✓</span></li>
+        <li>AI role-play<span id="free-ai">3 / day</span></li><li>Circle Rage Room · Simmer<span id="free-rage">15 / day</span></li></ul>
+      <p class="chip ok" id="t1-state" style="margin-top:1rem;align-self:flex-start">Included</p></div>
+
+    <div class="card tier glow"><div class="eyebrow">✨ Keep the Circle Glowing</div><div class="price">Any amount<span class="muted small"> from ₱<span id="min">20</span></span></div>
+      <p class="muted small">Become a <b>Glow Keeper</b>. Contributions support running The Virtual Circle so Tier 1 can stay free.</p>
+      <ul class="list"><li>Glowing ring on your photo<span>✓</span></li><li>Glow Keeper badge<span>✓</span></li><li>Your name on the Glow Wall (or anonymous)<span>✓</span></li>
+        <li>Extra Circle Rage Room throws<span id="bonus">+20 / day</span></li><li>Lasts per contribution<span id="days">30 days</span></li></ul>
+      <form id="support" style="margin-top:1rem"><div class="amounts" id="amounts"></div>
+        <input id="amt" name="amount" type="number" min="20" step="1" placeholder="Other amount (₱)" aria-label="Contribution amount">
+        <input name="message" maxlength="140" placeholder="A short note for the Glow Wall (optional)" style="margin-top:.5rem">
+        <label class="inline"><input type="checkbox" name="anonymous"> Show me as "A Glow Keeper" on the wall <span class="faint small">(your glow ring and badge still show on your profile)</span></label>
+        <button class="btn block">Keep the circle glowing ✨</button><div class="msg" id="sm"></div></form>
+      <p class="faint small" id="sup-state"></p></div>
+
+    <div class="card tier"><div class="eyebrow">Tier 2 · Circle Pro</div><div class="price"><span id="price">₱149</span><span class="muted small"> / 30 days</span></div>
+      <p class="muted small">For VAs ready to grow and earn.</p>
+      <ul class="list"><li>All training materials and Pro courses<span>✓</span></li><li><span><b>Earn by teaching</b>: offer mentoring and upskilling gigs</span><span id="pct" class="nowrap">80% to you</span></li>
+        <li>Sell your own training modules<span>✓</span></li><li>Shown first to clients<span>✓</span></li><li>Unlimited AI role-play<span>✓</span></li><li>✨ Pro badge<span>✓</span></li></ul>
+      <p class="faint small" style="margin-top:.8rem">Teaching also needs <b>Proven VA</b> rank (proof of work) so aspiring VAs learn from people who've done the job. *Earnings are paid daily after each session, less 5% withholding tax (with a BIR 2307). If Tier 2 lapses, your gigs leave the listing, but sessions already booked still go ahead and get paid.</p>
+      <p class="faint small">Tier 2 is an optional membership you choose. No client or employer here may ever charge you to get hired.</p>
+      <div id="state" style="margin-top:.6rem"></div></div>
   </div>
+
+  <section style="margin-top:3.5rem"><div class="card"><div class="row between"><div><div class="eyebrow">The Glow Wall</div><h2 style="font-size:1.6rem;margin:0">Keeping the circle glowing this month</h2></div>
+    <div class="faint small" id="uses"></div></div>
+    <div class="row between" style="margin:1.2rem 0 .4rem"><span><b class="amber" id="raised">₱0</b> <span class="muted small">of ₱<span id="goal">5,000</span> goal</span></span><span class="muted small"><span id="people">0</span> Glow Keepers</span></div>
+    <div class="glow-meter"><i id="meter" style="width:0"></i></div>
+    <div class="glow-wall" id="wall" style="margin-top:1.4rem"></div></div></section>
+
+  <p class="faint small center" style="margin-top:2rem">No auto-renew: you pay for 30 days at a time via GCash, Maya or card. Contributions support The Virtual Circle's operations; they're not tax-deductible donations.</p>
 </main>
 <script type="module">
-import { api, $, esc, shell, toast, ago, chip, rankChip, avatar } from '/js/app.js';
-const { user: me } = await shell({ auth: true, needActive: true });
-const id = new URLSearchParams(location.search).get('id') || me.id;
-const r = await api('profile?id=' + encodeURIComponent(id)); const p = r.profile;
-document.title = p.name + ' — The Virtual Circle';
-const action = () => {
-  if (r.me) return `<button class="btn ghost sm" id="edit-head">Edit headline</button><a class="btn quiet sm" href="/app.html">Edit profile</a>`;
-  if (p.host) return '';
-  const c = r.connection;
-  const btn = !c ? '<button class="btn sm" data-act="connect">🤝 Connect</button>'
-    : c.status === 'accepted' ? '<button class="btn quiet sm" data-act="remove">✓ Connected</button>'
-    : c.outgoing ? '<button class="btn quiet sm" disabled>Request sent</button>' : '<button class="btn sm" data-act="accept">Accept request</button>';
-  return btn + (r.can_dm ? `<a class="btn ghost sm" href="/messages.html?to=${p.id}">✉️ Message</a>` : '');
-};
-const draw = () => {
-  $('#head').innerHTML = `<div class="row" style="gap:1.25rem;align-items:center">${avatar(p.name, 88, p.supporter)}<div style="flex:1;min-width:220px">
-    <h1 style="font-size:clamp(1.8rem,4vw,2.6rem);margin:0">${esc(p.name)}</h1><p class="muted" style="margin:.2rem 0 .6rem">${esc(p.headline || (p.account_type === 'client' ? 'Client' : 'Virtual Assistant'))}</p>
-    <div class="chips">${rankChip(p.rank_name, p.va_rank)}${p.pro ? chip('✨ Tier 2', 'amber') : ''}${p.supporter ? chip('Glow Keeper ✨', 'amber') : ''}${p.ambassador ? chip('🌟 Founding Ambassador', 'amber') : ''}${p.hub ? chip('#' + p.hub) : ''}${p.years_experience ? chip(p.years_experience + ' yrs experience') : ''}</div></div>
-    <div class="row">${action()}</div></div>
-    <div class="row" style="gap:2rem;margin-top:1.25rem"><span><b class="amber">${r.counts.connections}</b> <span class="muted small">connections</span></span><span><b class="amber">${r.counts.posts}</b> <span class="muted small">posts</span></span>
-    <span><b class="amber">${p.sim_score || '—'}</b> <span class="muted small">practice score</span></span></div>`;
-};
+import { api, $, esc, shell, toast, handlePayment, when, busy, say } from '/js/app.js';
+await shell({ auth: true });
+const qp = new URLSearchParams(location.search); if (qp.get('paid')) toast(qp.get('for') === 'pro' ? 'Welcome to Tier 2 · Circle Pro ✨' : 'Thank you for keeping the circle glowing ✨', 'ok');
+let s = await api('membership/status');
+$('#price').textContent = '₱' + s.prices.pro; $('#min').textContent = s.prices.supporter_min; $('#amt').min = s.prices.supporter_min; $('#days').textContent = s.prices.supporter_days + ' days';
+$('#free-ai').textContent = s.free_ai_sims_per_day + ' / day'; $('#free-rage').textContent = s.rage.free_daily + ' / day'; $('#bonus').textContent = '+' + s.rage.supporter_bonus + ' / day'; $('#pct').textContent = s.gig_mentor_pct + '% to you*';
+const presets = [s.prices.supporter_min, 50, 100, 250].filter((v, i, a) => a.indexOf(v) === i && v >= s.prices.supporter_min);
+$('#amounts').innerHTML = presets.map((v) => `<button type="button" class="btn quiet sm" data-v="${v}">₱${v}</button>`).join('');
+$('#amounts').onclick = (e) => { const v = e.target.dataset.v; if (!v) return; $('#amt').value = v; [...$('#amounts').children].forEach((b) => b.classList.toggle('quiet', b !== e.target)); };
+function draw() {
+  $('#sup-state').textContent = s.supporter ? `✨ You're a Glow Keeper until ${when(s.supporter_until)}. Thank you!` : '';
+  $('#state').innerHTML = s.pro ? `<p class="chip amber">✨ Circle Pro until ${when(s.pro_until)}</p><div class="row" style="margin-top:.6rem"><button class="btn ghost" id="go">Add 30 days</button>${s.can_teach ? '<a class="btn" href="/mentor.html#gigs">Start teaching</a>' : ''}</div>`
+    : `<button class="btn block" id="go">Go Tier 2 for 30 days</button>`;
+  $('#go').onclick = (e) => busy(e.currentTarget, async () => { try { if (handlePayment(await api('pro/subscribe', { body: {} }), 'Welcome to Circle Pro ✨')) { s = await api('membership/status'); draw(); } } catch (err) { toast(err.message, 'err'); } });
+}
 draw();
-if (p.host) $('#head').insertAdjacentHTML('beforeend', '<div class="notice" style="margin-top:1rem">🤖 <b>' + esc(p.name) + ' is a Circle Host: an AI helper run by The Virtual Circle team, not a member.</b> Hosts post conversation starters and reply when nobody else has yet. They can\'t connect, chat privately, or take part in Circle BFF, Jobs or Talent.</div>');
-$('#about').innerHTML = `<h3>About</h3><p class="muted small">${esc(p.bio || 'No bio yet.')}</p><div class="chips">${String(p.skills || '').split(',').filter(Boolean).map((s) => chip(s.trim())).join('')}</div>
-  <hr class="divider"><div class="chips">${p.badges.map((b) => chip('✦ ' + b, 'amber')).join('') || '<span class="faint small">No badges yet</span>'}</div>`;
-$('#certs').innerHTML = `<h3>Certificates</h3>${r.certificates.length ? '<ul class="list">' + r.certificates.map((c) => `<li><span>🎓 ${esc(c.title)}</span><span class="faint small">${ago(c.ts)}</span></li>`).join('') + '</ul>' : '<p class="muted small">None yet.</p>'}`;
-$('#head').onclick = async (e) => {
-  if (e.target.id === 'edit-head') { const h = prompt('Your headline (e.g. "Night-shift support lead · Shopify · 4 yrs")', p.headline || ''); if (h === null) return;
-    await api('profile/headline', { body: { headline: h } }); p.headline = h; return draw(); }
-  const a = e.target.dataset.act; if (!a) return;
-  try {
-    if (a === 'connect' || a === 'accept') { const x = await api('connect/request', { body: { user_id: p.id } }); r.connection = { status: x.status, outgoing: x.status === 'pending' }; }
-    if (a === 'remove' && confirm('Remove this connection?')) { await api('connect/remove', { body: { user_id: p.id } }); r.connection = null; }
-    const fresh = await api('profile?id=' + encodeURIComponent(id)); Object.assign(r, fresh); draw();
-  } catch (err) { toast(err.message, 'err'); }
-};
-const { posts } = await api('feed?user=' + encodeURIComponent(p.id));
-$('#posts').innerHTML = posts.map((x) => `<a class="card post" href="/feed.html#${x.id}" style="display:block;color:inherit;text-decoration:none"><span class="faint small">${ago(x.ts)} · ${x.reactions} reactions · ${x.comments} comments</span>
-  <p class="post-body" style="margin-top:.5rem">${esc(x.text)}</p></a>`).join('') || '<div class="empty">No posts yet.</div>';
+$('#support').onsubmit = (e) => { e.preventDefault(); const d = Object.fromEntries(new FormData(e.target)); d.anonymous = e.target.elements.anonymous.checked;
+  busy(e.submitter, async () => { try { const r = await api('support/contribute', { body: d });
+    if (handlePayment(r, 'Thank you for keeping the circle glowing ✨')) { e.target.reset(); s = await api('membership/status'); draw(); wall(); } } catch (err) { say($('#sm'), err.message); } }); };
+async function wall() {
+  const w = await api('support/wall');
+  $('#raised').textContent = '₱' + Number(w.month.total).toLocaleString(); $('#goal').textContent = Number(w.goal).toLocaleString(); $('#people').textContent = w.month.people;
+  $('#meter').style.width = Math.min(100, Math.round(100 * w.month.total / (w.goal || 1))) + '%'; $('#uses').textContent = w.uses;
+  $('#wall').innerHTML = w.recent.map((r) => `<span title="${esc(r.day)}">✨ ${esc(r.display)}${r.message ? ' · <span class="muted">“' + esc(r.message) + '”</span>' : ''}${s.staff ? ` <button class="linkish" style="display:inline;width:auto;padding:0 .2rem" data-hide="${esc(r.id)}" title="Hide from the wall">✕</button>` : ''}</span>`).join('') || '<p class="muted small">Be the first Glow Keeper this month.</p>';
+}
+wall();
+$('#wall').onclick = async (e) => { const id = e.target.dataset.hide; if (!id || !confirm('Hide this entry from the Glow Wall?')) return; try { await api('admin/support/hide', { body: { id } }); wall(); } catch (err) { toast(err.message, 'err'); } };
 </script>
 </body></html>
